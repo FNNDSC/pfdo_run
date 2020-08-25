@@ -48,15 +48,15 @@ by fetching it from PyPI
 CLI specification
 -----------------
 
-Any text in the CLI prefixed with a percent char '%' is interpreted in one of two ways.
+Any text in the CLI prefixed with a percent char ``%`` is interpreted in one of two ways.
 
-First, any CLI to the ``pfdo_run`` itself can be accessed via '%'. Thus, for example a ``%outputDir`` in the ``--exec`` string will be expanded to the ``outputDir`` of the ``pfdo_run``.
+First, any CLI to the ``pfdo_run`` itself can be accessed via ``%``. Thus, for example a ``%outputDir`` in the ``--exec`` string will be expanded to the ``outputDir`` of the ``pfdo_run``.
 
 Secondly, three internal '%' variables are available:
 
-    * '%inputWorkingDir'  - the current input tree working directory
-    * '%outputWorkingDir' - the current output tree working directory
-    * '%inputWorkingFile' - the current file being processed
+* ``%inputWorkingDir``  - the current input tree working directory
+* ``%outputWorkingDir`` - the current output tree working directory
+* ``%inputWorkingFile`` - the current file being processed
 
 These internal variables allow for contextual specification of values. For example, a simple CLI touch command could be specified as
 
@@ -74,13 +74,13 @@ or a command to convert an input ``png`` to an output ``jpg`` using the ImageMag
 Special Functions
 -----------------
 
-Furthermore, `pfdo_run` offers the ability to apply some interal functions to a tag. The template for specifying a function to apply is:
+Furthermore, ``pfdo_run`` offers the ability to apply some interal functions to a tag. The template for specifying a function to apply is:
 
 .. code:: bash
 
     %_<functionName>[|arg1|arg2|...]_<tag>
 
-thus, a function is identified by a function name that is prefixed and suffixed by an underscore and appears in front of the tag to process. Possible args to the <functionName> are separated by pipe "|" characters.
+thus, a function is identified by a ``<functionName>`` that is prefixed and suffixed by an underscore ``_`` and appears in front of the tag to process. Possible args to the ``<functionName>`` are separated by pipe ``|`` characters.
 
 For example a string snippet that contains
 
@@ -88,11 +88,11 @@ For example a string snippet that contains
 
     %_strrepl|.|-_inputWorkingFile.txt
 
-will replace all occurences of '.' in the %inputWorkingFile with '-'. Also of interest, the trailing ".txt" is preserved in the final pattern for the result.
+will replace all occurences of ``.`` in the ``%inputWorkingFile`` with ``-``. Also of interest, the trailing ``.txt`` is preserved in the final pattern for the result.
 
 The following functions are available:
 
-.. code:: bash
+.. code:: html
 
     %_md5[|<len>]_<tagName>
     Apply an 'md5' hash to the value referenced by <tagName> and optionally
@@ -166,7 +166,7 @@ Command line arguments
 
     This is a formatting spec, so
 
-            --outputLeafDir 'preview-%%s'
+            --outputLeafDir 'preview-%s'
 
     where %%s is the original leaf directory node, will prefix each
     final directory containing output with the text 'preview-' which
@@ -215,9 +215,9 @@ Command line arguments
 Examples
 --------
 
-Perform a `pfdo_run` down some input directory and convert all input ``jpg`` files to ``png`` in the output tree:
+Perform a ``pfdo_run`` down some input directory and convert all input ``jpg`` files to ``png`` in the output tree:
 
-.. code::bash
+.. code:: bash
 
     pfdo_run                                                \\
         -I /var/www/html/data --filter jpg                  \\
@@ -226,9 +226,9 @@ Perform a `pfdo_run` down some input directory and convert all input ``jpg`` fil
         %outputWorkingDir/%_rmext_inputWorkingFile.png"     \\
         --threads 0 --printElapsedTime
 
-The above will find all files in the tree structure rooted at ``/var/www/html/data`` that also contain the string "jpg" anywhere in the filename. For each file found, a ``convert`` conversion will be called, storing a converted file in the same tree location in the output directory as the original input.
+The above will find all files in the tree structure rooted at ``/var/www/html/data`` that also contain the string ``jpg`` anywhere in the filename. For each file found, a ``convert`` conversion will be called, storing a converted file in the same tree location in the output directory as the original input.
 
-Note the special construct, ``%_remext_inputWorkingFile.png`` -- the ``%_<func>_`` designates a built in funtion to apply to the tag value. In this case, to "remove the extension" from the ``%inputWorkingFile`` string.
+Note the special construct, ``%_remext_inputWorkingFile.png`` -- the ``%_rmext_`` designates a built in funtion to apply to the tag value. In this case, to "remove the extension" from the ``%inputWorkingFile`` string.
 
 Finally the elapsed time and a JSON output are printed.
 

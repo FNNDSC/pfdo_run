@@ -37,15 +37,15 @@ str_desc = Colors.CYAN + """
 
         Recursively walk down a directory tree and run a CLI spec'd app
         on files in each directory (optionally filtered by some simple
-        expression). Results of each operation are saved in output tree
-        that  preserves the input directory structure.
+        expression). Results of each operation are saved in an output tree
+        that preserves the input directory structure.
 
 
                              -- version """ + \
              Colors.YELLOW + str_version + Colors.CYAN + """ --
 
         'pfdo_run' demonstrates how to use ``pftree`` to transverse
-        directory trees and execute a some user specified CLI operation
+        directory trees and execute some user specified CLI operation
         at each directory level (that optionally contains files of interest).
 
         As part of the "pf*" suite of applications, it is geared to IO as
@@ -275,7 +275,7 @@ def synopsis(ab_shortOnly = False):
     will be called, storing a converted file in the same tree location
     in the output directory as the original input.
 
-    Note the special construct, %_remext_inputWorkingFile.png -- the
+    Note the special construct, %_rmext_inputWorkingFile.png -- the
     %_<func>_ designates a built in funtion to apply to the
     tag value. In this case, to "remove the extension" from the
     %inputWorkingFile string.
