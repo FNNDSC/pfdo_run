@@ -1,3 +1,8 @@
+# Turn off all logging for modules.
+import logging
+logging.disable(logging.CRITICAL)
+
+
 # System imports
 import      json
 import      os
