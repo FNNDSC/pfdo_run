@@ -459,7 +459,7 @@ class pfdo_run(pfdo.pfdo):
                 str_replace     = tag_lookup(tag, **kwargs)
                 if 'md5'    in func: astr, str_replace   = md5_process(     func, str_replace)
                 if 'strmsk' in func: astr, str_replace   = strmsk_process(  func, str_replace)
-                if 'nospc'  in func: astr, str_replace   = nospc_process(   func, str_replace)
+                if 'strrepl'  in func: astr, str_replace   = strrepl_process(   func, str_replace)
                 if 'name'   in func: astr, str_replace   = name_process(    func, str_replace)
                 if 'rmext'  in func: astr, str_replace   = rmext_process(   func, str_replace)
                 astr  = astr.replace('%' + tag, str_replace, 1)
