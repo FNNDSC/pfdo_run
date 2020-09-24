@@ -574,35 +574,3 @@ class pfdo_run(pfdo.pfdo):
             self.dp.qprint('Returning from pfdo_run...', level = 1)
 
         return d_ret
-
-class object_factoryCreate:
-    """
-    A class that examines input file string for extension information and
-    returns the relevant convert object.
-    """
-
-    def __init__(self, args):
-        """
-        Parse relevant CLI args.
-        """
-
-        self.C_convert = pfdo_run(
-            inputFile            = args.inputFile,
-            inputDir             = args.inputDir,
-            outputDir            = args.outputDir,
-            exec                 = args.exec,
-            filterExpression     = args.filter,
-            analyzeFileIndex     = args.analyzeFileIndex,
-            printElapsedTime     = args.printElapsedTime,
-            threads              = args.threads,
-            outputLeafDir        = args.outputLeafDir,
-            test                 = args.test,
-            noJobLogging         = args.noJobLogging,
-            man                  = args.man,
-            synopsis             = args.synopsis,
-            json                 = args.json,
-            followLinks          = args.followLinks,
-            overwrite            = args.overwrite,
-            verbosity            = args.verbosity,
-            version              = args.version
-        )
