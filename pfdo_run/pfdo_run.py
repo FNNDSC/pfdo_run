@@ -106,7 +106,7 @@ class pfdo_run(pfdo.pfdo):
                                         self.args['inputDir'],
                                         self.args['outputDir']
         )
-        self.dp.qprint("mkdir %s" % str_outputWorkingDir, 
+        self.dp.qprint("mkdir %s" % str_outputWorkingDir,
                         level = 3)
         other.mkdir(str_outputWorkingDir)
 
@@ -205,7 +205,7 @@ class pfdo_run(pfdo.pfdo):
                                         self.args['outputDir']
         )
         for str_file in l_fileToAnalyze_determine(l_fileProbed):
-            d_tagProcess    = self.tagsInString_process(self.args['exec'], 
+            d_tagProcess    = self.tagsInString_process(self.args['exec'],
                                         inputWorkingDir   = str_path,
                                         inputWorkingFile  = str_file,
                                         outputWorkingDir  = str_outputWorkingDir
