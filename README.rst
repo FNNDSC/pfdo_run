@@ -76,7 +76,7 @@ Special Functions
 
 Furthermore, ``pfdo_run`` offers the ability to apply some interal functions to a tag. The template for specifying a function to apply is:
 
-.. code:: bash
+.. code::
 
     %_<functionName>[|arg1|arg2|...]_<tag>
 
