@@ -19,7 +19,7 @@ import  pfmisc
 from    pfmisc._colors      import Colors
 from    pfmisc              import other
 
-str_version = "1.0.10"
+str_version = "1.0.12"
 str_desc = Colors.CYAN + """
 
                               __    _                         
@@ -70,7 +70,9 @@ def synopsis(ab_shortOnly = False):
                      -O|--outputDir <outputDir>                 \\
                     --exec <CLIcmdToExec>                       \\
                     [-i|--inputFile <inputFile>]                \\
+                    [-f|--filterExpression <someFilter>]        \\
                     [--analyzeFileIndex <someIndex>]            \\
+                    [--outputLeafDir <outputLeafDirFormat>]     \\
                     [--threads <numThreads>]                    \\
                     [--noJobLogging]                            \\
                     [--test]                                    \\
