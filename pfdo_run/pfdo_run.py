@@ -552,7 +552,6 @@ class pfdo_run(pfdo.pfdo):
             if k == 'timerStart':   b_timerStart    = bool(v)
 
         if b_timerStart:    other.tic()
-
         d_pfdo          = super().run(
                             JSONprint   = False,
                             timerStart  = False
