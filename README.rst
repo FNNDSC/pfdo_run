@@ -1,4 +1,4 @@
-pfdo_run 1.0.12
+pfdo_run 2.0.0
 ==================
 
 .. image:: https://badge.fury.io/py/pfdo_med2image.svg
@@ -141,9 +141,30 @@ Command line arguments
     specified, then do not perform a directory walk, but convert only
     this file.
 
-    [-f|--filterExpression <someFilter>]
-    An optional string to filter the files of interest from the
-    <inputDir> tree.
+    [-f|--fileFilter <someFilter1,someFilter2,...>]
+    An optional comma-delimated string to filter out files of interest
+    from the <inputDir> tree. Each token in the expression is applied in
+    turn over the space of files in a directory location, and only files
+    that contain this token string in their filename are preserved.
+
+    [-d|--dirFilter <someFilter1,someFilter2,...>]
+    Similar to the `fileFilter` but applied over the space of leaf node
+    in directory paths. A directory must contain at least one file
+    to be considered.
+
+    If a directory leaf node contains a string that corresponds to any of
+    the filter tokens, a special "hit" is recorded in the file hit list,
+    "%d-<leafnode>". For example, a directory of
+
+                        /some/dir/in/the/inputspace/here1234
+
+    with a `dirFilter` of `1234` will create a "special" hit entry of
+    "%d-here1234" to tag this directory for processing.
+
+    In addition, if a directory is filtered through, all the files in
+    that directory will be added to the filtered file list. If no files
+    are to be added, passing an explicit file filter with an "empty"
+    single string argument, i.e. `--fileFilter " "`, is advised.
 
     [--analyzeFileIndex <someIndex>]
     An optional string to control which file(s) in a specific directory
@@ -229,6 +250,20 @@ Perform a ``pfdo_run`` down some input directory and convert all input ``jpg`` f
 The above will find all files in the tree structure rooted at ``/var/www/html/data`` that also contain the string ``jpg`` anywhere in the filename. For each file found, a ``convert`` conversion will be called, storing a converted file in the same tree location in the output directory as the original input.
 
 Note the special construct, ``%_remext_inputWorkingFile.png`` -- the ``%_rmext_`` designates a built in funtion to apply to the tag value. In this case, to "remove the extension" from the ``%inputWorkingFile`` string.
+
+Consider an example where only one file in a branched inputdir
+space is to be preserved:
+
+.. code:: bash
+
+    pfdo_run                                                \\
+        -I (pwd)/raw -O (pwd)/out                           \\
+        -d 100307 -f " "                                    \\
+        --exec "cp %inputWorkingDir/brain.mgz
+        %outputWorkingDir/brain.mgz"                        \\
+        --threads 0 --verbosity 3 --noJobLogging
+
+Here, the input directory space is pruned for a directory leaf node that contains the string 100307. The exec command essentially copies the file `brain.mgz` in that target directory to the corresponding location in the output tree.
 
 Finally the elapsed time and a JSON output are printed.
 
