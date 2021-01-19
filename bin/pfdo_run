@@ -19,18 +19,18 @@ import  pfmisc
 from    pfmisc._colors      import Colors
 from    pfmisc              import other
 
-str_version = "1.0.12"
+str_version = "2.0.0"
 str_desc = Colors.CYAN + """
 
-                              __    _                         
-                             / _|  | |                        
-                       _ __ | |_ __| | ___   _ __ _   _ _ __  
+                              __    _
+                             / _|  | |
+                       _ __ | |_ __| | ___   _ __ _   _ _ __
                       | '_ \|  _/ _` |/ _ \ | '__| | | | '_ \ 
                       | |_) | || (_| | (_) || |  | |_| | | | |
                       | .__/|_| \__,_|\___/ |_|   \__,_|_| |_|
-                      | |               ______                
-                      |_|              |______|               
-                      
+                      | |               ______
+                      |_|              |______|
+
 
 
                           Path-File Do Run
@@ -70,7 +70,8 @@ def synopsis(ab_shortOnly = False):
                      -O|--outputDir <outputDir>                 \\
                     --exec <CLIcmdToExec>                       \\
                     [-i|--inputFile <inputFile>]                \\
-                    [-f|--filterExpression <someFilter>]        \\
+                    [-f|--fileFilter <filter1,filter2,...>]     \\
+                    [-d|--dirFilter <filter1,filter2,...>]      \\
                     [--analyzeFileIndex <someIndex>]            \\
                     [--outputLeafDir <outputLeafDirFormat>]     \\
                     [--threads <numThreads>]                    \\
@@ -95,7 +96,7 @@ def synopsis(ab_shortOnly = False):
     DESCRIPTION
 
         ``pfdo_run`` runs some user specified CLI at each path/file location
-        in an input directory, storing results (and logs) at a corresponding 
+        in an input directory, storing results (and logs) at a corresponding
         dir location rooted in the output directory.
 
     ARGS
@@ -117,22 +118,42 @@ def synopsis(ab_shortOnly = False):
         specified, then do not perform a directory walk, but convert only
         this file.
 
-        [-f|--filterExpression <someFilter>]
-        An optional string to filter the files of interest from the
-        <inputDir> tree.
+        [-f|--fileFilter <someFilter1,someFilter2,...>]
+        An optional comma-delimated string to filter out files of interest
+        from the <inputDir> tree. Each token in the expression is applied in
+        turn over the space of files in a directory location, and only files
+        that contain this token string in their filename are preserved.
+
+        [-d|--dirFilter <someFilter1,someFilter2,...>]
+        Similar to the `fileFilter` but applied over the space of leaf node
+        in directory paths. A directory must contain at least one file
+        to be considered.
+
+        If a directory leaf node contains a string that corresponds to any of
+        the filter tokens, a special "hit" is recorded in the file hit list,
+        "%d-<leafnode>". For example, a directory of
+
+                            /some/dir/in/the/inputspace/here1234
+
+        with a `dirFilter` of `1234` will create a "special" hit entry of
+        "%d-here1234" to tag this directory for processing.
+
+        In addition, if a directory is filtered through, all the files in
+        that directory will be added to the filtered file list. If no files
+        are to be added, passing an explicit file filter with an "empty"
+        single string argument, i.e. `--fileFilter " "`, is advised.
 
         [--analyzeFileIndex <someIndex>]
         An optional string to control which file(s) in a specific directory
         to which the analysis is applied. The default is "-1" which implies
-        *ALL* files in a given directory. Other valid <someIndex> are:
+        *ALL* files in a given directory. The space of valid <someIndex> are:
 
             'm':   only the "middle" file in the returned file list
             "f":   only the first file in the returned file list
             "l":   only the last file in the returned file list
             "<N>": the file at index N in the file list. If this index
                    is out of bounds, no analysis is performed.
-
-            "-1" means all files.
+            "-1":  all files.
 
         [--outputLeafDir <outputLeafDirFormat>]
         If specified, will apply the <outputLeafDirFormat> to the output
@@ -142,9 +163,9 @@ def synopsis(ab_shortOnly = False):
 
         This is a formatting spec, so
 
-            --outputLeafDir 'preview-%%s'
+            --outputLeafDir 'preview-%s'
 
-        where %%s is the original leaf directory node, will prefix each
+        where %s is the original leaf directory node, will prefix each
         final directory containing output with the text 'preview-' which
         can be useful in describing some features of the output set.
 
@@ -282,6 +303,21 @@ def synopsis(ab_shortOnly = False):
     tag value. In this case, to "remove the extension" from the
     %inputWorkingFile string.
 
+    Consider an example where only one file in a branched inputdir
+    space is to be preserved:
+
+        pfdo_run                                                \\
+            -I (pwd)/raw -O (pwd)/out                           \\
+            -d 100307 -f " "                                    \\
+            --exec "cp %inputWorkingDir/brain.mgz
+            %outputWorkingDir/brain.mgz"                        \\
+            --threads 0 --verbosity 3 --noJobLogging
+
+    Here, the input directory space is pruned for a directory leaf
+    node that contains the string 100307. The exec command essentially
+    copies the file `brain.mgz` in that target directory to the
+    corresponding location in the output tree.
+
     Finally the elapsed time and a JSON output are printed.
 
     '''
@@ -306,9 +342,13 @@ parser.add_argument("-e", "--exec",
                     help    = "command line execution string to perform",
                     dest    = 'exec',
                     default = '')
-parser.add_argument("--filterExpression",
-                    help    = "string file filter",
-                    dest    = 'filter',
+parser.add_argument("-f", "--fileFilter",
+                    help    = "a list of comma separated string filters to apply across the input file space",
+                    dest    = 'fileFilter',
+                    default = '')
+parser.add_argument("-d", "--dirFilter",
+                    help    = "a list of comma separated string filters to apply across the input dir space",
+                    dest    = 'dirFilter',
                     default = '')
 parser.add_argument("--analyzeFileIndex",
                     help    = "file index per directory to analyze",
