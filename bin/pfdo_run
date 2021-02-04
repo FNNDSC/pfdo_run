@@ -19,7 +19,7 @@ import  pfmisc
 from    pfmisc._colors      import Colors
 from    pfmisc              import other
 
-str_version = "2.0.2"
+str_version = "2.2.0"
 str_desc = Colors.CYAN + """
 
                           __    _
@@ -308,7 +308,7 @@ def synopsis(ab_shortOnly = False):
 
         pfdo_run                                                \\
             -I (pwd)/raw -O (pwd)/out                           \\
-            -d 100307 -f " "                                    \\
+            -d 100307                                           \\
             --exec "cp %inputWorkingDir/brain.mgz
             %outputWorkingDir/brain.mgz"                        \\
             --threads 0 --verbosity 3 --noJobLogging
@@ -437,7 +437,6 @@ args.str_desc       = synopsis(True)
 pf_do_shell         = pfdo_run.pfdo_run(vars(args))
 
 # And now run it!
-# pudb.set_trace()
 d_pfdo_shell        = pf_do_shell.run(timerStart = True)
 
 if args.printElapsedTime:
