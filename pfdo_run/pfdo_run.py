@@ -228,34 +228,6 @@ class pfdo_run(pfdo.pfdo):
             'd_convert':        d_convert
         }
 
-    def filelist_prune(self, at_data, *args, **kwargs) -> dict:
-        """
-        Given a list of files, possibly prune list by
-        interal self.args['filter'].
-        """
-
-        b_status    : bool      = True
-        l_file      : list      = []
-        str_path    : str       = at_data[0]
-        al_file     : list      = at_data[1]
-
-        if len(self.args['filter']):
-            al_file = [x for x in al_file if self.args['filter'] in x]
-
-        if len(al_file):
-            al_file.sort()
-            l_file      = al_file
-            b_status    = True
-        else:
-            self.dp.qprint( "No valid files to analyze found in path %s!" %
-                            str_path, comms = 'warn', level = 5)
-            l_file      = None
-            b_status    = False
-        return {
-            'status':   b_status,
-            'l_file':   l_file
-        }
-
     def exec(self) -> dict:
         """
         The main entry point for connecting methods of this class
