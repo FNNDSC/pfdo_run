@@ -1,4 +1,4 @@
-pfdo_run 2.0.2
+pfdo_run 2.2.0
 ==================
 
 .. image:: https://badge.fury.io/py/pfdo_med2image.svg
