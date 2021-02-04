@@ -12,7 +12,7 @@ def readme():
 
 setup(
       name             =   'pfdo_run',
-      version          =   '2.0.0',
+      version          =   '2.0.2',
       description      =   'Run arbitrary CLI on each nested dir of an inputdir',
       long_description =   readme(),
       author           =   'FNNDSC',

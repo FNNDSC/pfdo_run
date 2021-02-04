@@ -487,6 +487,8 @@ class pfdo_run(pfdo.pfdo):
         d_ret       : dict = {
             'stdout':       "",
             'stderr':       "",
+            'cmd':          "",
+            'cwd':          "",
             'returncode':   0
         }
         str_stdoutLine  : str   = ""
@@ -510,6 +512,8 @@ class pfdo_run(pfdo.pfdo):
                 if int(self.args['verbosity']):
                     print(str_stdoutLine, end = '')
                 str_stdout      += str_stdoutLine
+        d_ret['cmd']        = str_cmd
+        d_ret['cwd']        = os.getcwd()
         d_ret['stdout']     = str_stdout
         d_ret['stderr']     = p.stderr.read().decode()
         d_ret['returncode'] = p.returncode
