@@ -122,11 +122,7 @@ class pfdo_run(pfdo.pfdo):
 
     def inputAnalyzeCallback(self, *args, **kwargs):
         """
-        Callback stub for doing actual work. Since the `med2image`
-        is a mostly stand-apart module, the inputRead and outputWrite
-        callbacks are not applicable here, since calling the
-        `med2image` module appropriately reads an input and saves
-        an output.
+        Callback stub for doing actual work.
         """
 
         def l_fileToAnalyze_determine(l_fileProbed):

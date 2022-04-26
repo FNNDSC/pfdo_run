@@ -1,4 +1,4 @@
-pfdo_run 2.2.6
+pfdo_run 2.2.8
 ==================
 
 .. image:: https://badge.fury.io/py/pfdo_run.svg
@@ -13,15 +13,14 @@ pfdo_run 2.2.6
 .. contents:: Table of Contents
 
 
-Quick Overview
---------------
-
--  ``pfdo_run`` demonstrates how to use ``pftree`` to transverse directory trees and execute some user specified CLI operation at each directory level (that optionally contains files of interest).
-
 Overview
---------
+---------
 
-``pfdo_run`` leverages the ``pfree`` callback coding contract to target a specific directory with specific files in an arbitrary file tree. At each target directory, a user specified CLI is executed on the files contents at that nested target directory.
+``pfdo_run`` provides a powerful mechanism for exploring an input directory space for files and directories of interest, and applying a user specified CLI in the space of each hit. Outputs are saved typically in an output tree that mirrors the input tree.
+
+Internally, ``pfdo_run`` leverages the ``pftree`` infrastructure to perform the space exploration and allows for callback methods to be applied at each stage of ``read``, ``analyze`` and ``write`` for valid target hits.
+
+Addtionally, ``pfdo_run`` can apply some additional functions to its hits such as ``md5`` hashing, string replacement, extension removal and more. See below for more detail.
 
 Installation
 ------------
