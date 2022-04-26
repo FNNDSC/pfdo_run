@@ -12,14 +12,14 @@ def readme():
 
 setup(
       name             =   'pfdo_run',
-      version          =   '2.2.2',
+      version          =   '2.2.4',
       description      =   'Run arbitrary CLI on each nested dir of an inputdir',
       long_description =   readme(),
       author           =   'FNNDSC',
       author_email     =   'dev@babymri.org',
       url              =   'https://github.com/FNNDSC/pfdo_med2image',
       packages         =   ['pfdo_run'],
-      install_requires =   ['pfmisc', 'pftree', 'pfdo'],
+      install_requires =   ['pfmisc', 'pftree', 'pfdo', 'Faker'],
       #test_suite       =   'nose.collector',
       #tests_require    =   ['nose'],
       scripts          =   ['bin/pfdo_run'],
