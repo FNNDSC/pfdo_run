@@ -1,14 +1,14 @@
-pfdo_run 2.2.2
+pfdo_run 2.2.6
 ==================
 
-.. image:: https://badge.fury.io/py/pfdo_med2image.svg
-    :target: https://badge.fury.io/py/pfdo_med2image
+.. image:: https://badge.fury.io/py/pfdo_run.svg
+    :target: https://badge.fury.io/py/pfdo_run
 
-.. image:: https://travis-ci.org/FNNDSC/pfdo_med2image.svg?branch=master
-    :target: https://travis-ci.org/FNNDSC/pfdo_med2image
+.. image:: https://travis-ci.org/FNNDSC/pfdo_run.svg?branch=master
+    :target: https://travis-ci.org/FNNDSC/pfdo_run
 
 .. image:: https://img.shields.io/badge/python-3.5%2B-blue.svg
-    :target: https://badge.fury.io/py/pfdo_med2image
+    :target: https://badge.fury.io/py/pfdo_run
 
 .. contents:: Table of Contents
 
@@ -124,113 +124,99 @@ Command line arguments
 .. code:: html
 
 
-    -I|--inputDir <inputDir>
-    Input base directory to traverse.
+        -I|--inputDir <inputDir>
+        Input base directory to traverse.
 
-    -O|--outputDir <outputDir>
-    The output root directory that will contain a tree structure identical
-    to the input directory, and each "leaf" node will contain the analysis
-    results.
+        -O|--outputDir <outputDir>
+        The output root directory that will contain a tree structure identical
+        to the input directory, and each "leaf" node will contain the analysis
+        results.
 
-    --exec <CLIcmdToExec>
-    The command line expression to apply at each directory node of the
-    input tree. See the CLI SPECIFICATION section for more information.
+        --exec <CLIcmdToExec>
+        The command line expression to apply at each directory node of the
+        input tree. See the CLI SPECIFICATION section for more information.
 
-    [-i|--inputFile <inputFile>]
-    An optional <inputFile> specified relative to the <inputDir>. If
-    specified, then do not perform a directory walk, but convert only
-    this file.
+        [-i|--inputFile <inputFile>]
+        An optional <inputFile> specified relative to the <inputDir>. If
+        specified, then do not perform a directory walk, but convert only
+        this file.
 
-    [-f|--fileFilter <someFilter1,someFilter2,...>]
-    An optional comma-delimated string to filter out files of interest
-    from the <inputDir> tree. Each token in the expression is applied in
-    turn over the space of files in a directory location, and only files
-    that contain this token string in their filename are preserved.
+        [-f|--fileFilter <someFilter1,someFilter2,...>]
+        An optional comma-delimated string to filter out files of interest
+        from the <inputDir> tree. Each token in the expression is applied in
+        turn over the space of files in a directory location, and only files
+        that contain this token string in their filename are preserved.
 
-    [-d|--dirFilter <someFilter1,someFilter2,...>]
-    Similar to the `fileFilter` but applied over the space of leaf node
-    in directory paths. A directory must contain at least one file
-    to be considered.
+        [-d|--dirFilter <someFilter1,someFilter2,...>]
+        An additional filter that will further limit any files to process to
+        only those files that exist in leaf directory nodes that have some
+        substring of each of the comma separated <someFilter> in their
+        directory name.
 
-    If a directory leaf node contains a string that corresponds to any of
-    the filter tokens, a special "hit" is recorded in the file hit list,
-    "%d-<leafnode>". For example, a directory of
-
-                        /some/dir/in/the/inputspace/here1234
-
-    with a `dirFilter` of `1234` will create a "special" hit entry of
-    "%d-here1234" to tag this directory for processing.
-
-    In addition, if a directory is filtered through, all the files in
-    that directory will be added to the filtered file list. If no files
-    are to be added, passing an explicit file filter with an "empty"
-    single string argument, i.e. `--fileFilter " "`, is advised.
-
-    [--analyzeFileIndex <someIndex>]
-    An optional string to control which file(s) in a specific directory
-    to which the analysis is applied. The default is "-1" which implies
-    *ALL* files in a given directory. Other valid <someIndex> are:
+        [--analyzeFileIndex <someIndex>]
+        An optional string to control which file(s) in a specific directory
+        to which the analysis is applied. The default is "-1" which implies
+        *ALL* files in a given directory. The space of valid <someIndex> are:
 
             'm':   only the "middle" file in the returned file list
             "f":   only the first file in the returned file list
             "l":   only the last file in the returned file list
             "<N>": the file at index N in the file list. If this index
                    is out of bounds, no analysis is performed.
-
             "-1":  all files.
 
-    [--outputLeafDir <outputLeafDirFormat>]
-    If specified, will apply the <outputLeafDirFormat> to the output
-    directories containing data. This is useful to blanket describe
-    final output directories with some descriptive text, such as
-    'anon' or 'preview'.
+        [--outputLeafDir <outputLeafDirFormat>]
+        If specified, will apply the <outputLeafDirFormat> to the output
+        directories containing data. This is useful to blanket describe
+        final output directories with some descriptive text, such as
+        'anon' or 'preview'.
 
-    This is a formatting spec, so
+        This is a formatting spec, so
 
             --outputLeafDir 'preview-%s'
 
-    where %%s is the original leaf directory node, will prefix each
-    final directory containing output with the text 'preview-' which
-    can be useful in describing some features of the output set.
+        where %s is the original leaf directory node, will prefix each
+        final directory containing output with the text 'preview-' which
+        can be useful in describing some features of the output set.
 
-    [--threads <numThreads>]
-    If specified, break the innermost analysis loop into <numThreads>
-    threads.
+        [--threads <numThreads>]
+        If specified, break the innermost analysis loop into <numThreads>
+        threads.
 
-    [--noJobLogging]
-    If specified, then suppress the logging of per-job output. Usually
-    each job that is run will have, in the output directory, three
-    additional files:
+        [--noJobLogging]
+        If specified, then suppress the logging of per-job output. Usually
+        each job that is run will have, in the output directory, three
+        additional files:
 
-        %inputWorkingFile-returncode
-        %inputWorkingFile-stderr
-        %inputWorkingFile-stdout
+                %inputWorkingFile-returncode
+                %inputWorkingFile-stderr
+                %inputWorkingFile-stdout
 
-    By specifying this option, the above files are not recorded.
+        By specifying this option, the above files are not recorded.
 
-    [-x|--man]
-    Show full help.
+        [-x|--man]
+        Show full help.
 
-    [-y|--synopsis]
-    Show brief help.
+        [-y|--synopsis]
+        Show brief help.
 
-    [--json]
-    If specified, output a JSON dump of final return.
+        [--json]
+        If specified, output a JSON dump of final return.
 
-    [--followLinks]
-    If specified, follow symbolic links.
+        [--followLinks]
+        If specified, follow symbolic links.
 
-    -v|--verbosity <level>
-    Set the app verbosity level.
+        -v|--verbosity <level>
+        Set the app verbosity level.
 
-        0: No internal output;
-        1: Run start / stop output notification;
-        2: As with level '1' but with simpleProgress bar in 'pftree';
-        3: As with level '2' but with list of input dirs/files in 'pftree';
-        5: As with level '3' but with explicit file logging for
-                - read
-                - analyze
-                - write
+            0: No internal output;
+            1: Run start / stop output notification;
+            2: As with level '1' but with simpleProgress bar in 'pftree';
+            3: As with level '2' but with list of input dirs/files in 'pftree';
+            5: As with level '3' but with explicit file logging for
+                    - read
+                    - analyze
+                    - write
 
 
 Examples
@@ -240,11 +226,11 @@ Perform a ``pfdo_run`` down some input directory and convert all input ``jpg`` f
 
 .. code:: bash
 
-    pfdo_run                                                \\
-        -I /var/www/html/data --filter jpg                  \\
-        -O /var/www/html/png                                \\
+    pfdo_run                                                \
+        -I /var/www/html/data --fileFilter jpg              \
+        -O /var/www/html/png                                \
         --exec "convert %inputWorkingDir/%inputWorkingFile
-        %outputWorkingDir/%_rmext_inputWorkingFile.png"     \\
+        %outputWorkingDir/%_rmext_inputWorkingFile.png"     \
         --threads 0 --printElapsedTime
 
 The above will find all files in the tree structure rooted at ``/var/www/html/data`` that also contain the string ``jpg`` anywhere in the filename. For each file found, a ``convert`` conversion will be called, storing a converted file in the same tree location in the output directory as the original input.
@@ -256,11 +242,11 @@ space is to be preserved:
 
 .. code:: bash
 
-    pfdo_run                                                \\
-        -I (pwd)/raw -O (pwd)/out                           \\
-        -d 100307 -f " "                                    \\
+    pfdo_run                                                \
+        -I (pwd)/raw -O (pwd)/out                           \
+        -d 100307 -f " "                                    \
         --exec "cp %inputWorkingDir/brain.mgz
-        %outputWorkingDir/brain.mgz"                        \\
+        %outputWorkingDir/brain.mgz"                        \
         --threads 0 --verbosity 3 --noJobLogging
 
 Here, the input directory space is pruned for a directory leaf node that contains the string 100307. The exec command essentially copies the file `brain.mgz` in that target directory to the corresponding location in the output tree.
