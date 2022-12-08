@@ -17,13 +17,15 @@ from        pfmisc              import  other
 from        pfmisc              import  error
 from        faker               import  Faker
 
-import      pfdo
+from        pfdo                import  pfdo
 import      subprocess
 import      hashlib
 import      math
 import      re
 import      pudb
 import      pftree
+
+__version__ = '3.0.0'
 
 class pfdo_run(pfdo.pfdo):
     """
