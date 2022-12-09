@@ -124,67 +124,16 @@ class pfdo_run(pfdo.pfdo):
 
     def inputAnalyzeCallback(self, *args, **kwargs):
         """
-        Callback stub for doing actual work.
+        Callback for doing actual work on the read data. Note that the
+        fileListToAnalyze_determine() is called, and its results are
+        processed by a CLI spawned job.
         """
-
-        def l_fileToAnalyze_determine(l_fileProbed):
-            """
-            Return the list of files to process, based on l_fileProbed
-            and self.args['analyzeFileIndex']
-            """
-
-            def middleIndex_find(l_lst):
-                """
-                Return the middle index in a list.
-
-                If list has no length, return None.
-                """
-                middleIndex     = None
-                if len(l_lst):
-                    if len(l_lst) == 1:
-                        middleIndex = 0
-                    else:
-                        middleIndex = round(len(l_lst)/2+0.01)
-                return middleIndex
-
-            def nIndex_find(l_lst, str_index):
-                """
-                For a string index, say "2", return the index at l_lst[2].
-
-                If index is out of bounds return None.
-                """
-                index:  int = 0
-                try:
-                    index   = int(str_index)
-                    if len(l_lst):
-                        if index >= -1 and index < len(l_lst):
-                            return index
-                except:
-                    pass
-                return None
-
-            l_fileToAnalyze:    list    = []
-            if len(l_fileProbed):
-                if self.args['analyzeFileIndex'] == 'f': l_fileToAnalyze.append(l_fileProbed[0])
-                if self.args['analyzeFileIndex'] == 'l': l_fileToAnalyze.append(l_fileProbed[-1])
-                if self.args['analyzeFileIndex'] == 'm':
-                    if middleIndex_find(l_fileProbed) >= 0:
-                        self.dp.qprint(l_fileProbed, level = 5)
-                        l_fileToAnalyze.append(l_fileProbed[middleIndex_find(l_fileProbed)])
-                nIndex  = nIndex_find(l_fileProbed, self.args['analyzeFileIndex'])
-                if nIndex:
-                    if nIndex == -1:
-                        l_fileToAnalyze = l_fileProbed
-                    else:
-                        l_fileToAnalyze.append(nIndex)
-            return l_fileToAnalyze
-
         b_status            : bool  = False
         l_fileProbed        : list  = []
+        l_fileAnalyzed      : list  = []
+        filesAnalyzed       : int   = 0
         d_inputReadCallback : dict  = {}
-        d_convert           : dict  = {}
-        str_cmd             : str   = ""
-        str_file            : str   = ""
+        d_job               : dict  = {}
         str_outputWorkingDir: str   = ""
 
         for k, v in kwargs.items():
@@ -195,36 +144,40 @@ class pfdo_run(pfdo.pfdo):
             str_path            = at_data[0]
             d_inputReadCallback = at_data[1]
 
-        # pudb.set_trace()
-
-        l_fileProbed            = d_inputReadCallback['l_fileProbed']
         str_outputWorkingDir    = str_path.replace(
                                         self.args['inputDir'],
                                         self.args['outputDir']
         )
-        for str_file in l_fileToAnalyze_determine(l_fileProbed):
-            d_tagProcess    = self.tagsInString_process(self.args['exec'],
-                                        inputWorkingDir   = str_path,
-                                        inputWorkingFile  = str_file,
-                                        outputWorkingDir  = str_outputWorkingDir
+        if 'l_fileProbed' in d_inputReadCallback.keys():
+            l_fileProbed        = self.fileListToAnalyze_determine(
+                                    d_inputReadCallback['l_fileProbed']
                                 )
-            if d_tagProcess['status']:
-                str_cmd     = d_tagProcess['str_result']
+            for str_file in l_fileProbed:
+                d_tagProcess    = self.tagsInString_process(self.args['exec'],
+                                            inputWorkingDir   = str_path,
+                                            inputWorkingFile  = str_file,
+                                            outputWorkingDir  = str_outputWorkingDir
+                                    )
+                if d_tagProcess['status']:
+                    str_cmd     = d_tagProcess['str_result']
 
-                # Run the job and provide realtime stdout
-                # and post-run stderr
-                self.dp.qprint(str_cmd, level = 5)
-                self.job_stdwrite(
-                    self.job_run(str_cmd), str_outputWorkingDir, str_file + '-'
-                )
+                    # Run the job and provide realtime stdout
+                    # and post-run stderr
+                    self.dp.qprint(str_cmd, level = 5)
+                    d_job = self.job_run(str_cmd)
+                    self.job_stdwrite(d_job, str_outputWorkingDir, str_file + '_')
 
+            b_status            = True
+            filesAnalyzed      += len(l_fileProbed)
 
         return {
             'status':           b_status,
             'str_path':         str_path,
-            'l_fileProbed':     l_fileProbed,
-            'd_convert':        d_convert
+            'l_fileAnalyzed':   l_fileProbed,
+            'filesAnalyzed':    filesAnalyzed,
+            'd_job':            d_job
         }
+
 
     def exec(self) -> dict:
         """
@@ -427,11 +380,11 @@ class pfdo_run(pfdo.pfdo):
             for tag, func in zip(l_tagsToSub, l_tags):
                 b_tagsFound     = True
                 str_replace     = tag_lookup(tag, **kwargs)
-                if 'md5'    in func: astr, str_replace   = md5_process(     func, str_replace)
-                if 'strmsk' in func: astr, str_replace   = strmsk_process(  func, str_replace)
-                if 'strrepl'  in func: astr, str_replace   = strrepl_process(   func, str_replace)
-                if 'name'   in func: astr, str_replace   = name_process(    func, str_replace)
-                if 'rmext'  in func: astr, str_replace   = rmext_process(   func, str_replace)
+                if 'md5'        in func: astr, str_replace = md5_process(     func, str_replace)
+                if 'strmsk'     in func: astr, str_replace = strmsk_process(  func, str_replace)
+                if 'strrepl'    in func: astr, str_replace = strrepl_process( func, str_replace)
+                if 'name'       in func: astr, str_replace = name_process(    func, str_replace)
+                if 'rmext'      in func: astr, str_replace = rmext_process(   func, str_replace)
                 astr  = astr.replace('%' + tag, str_replace, 1)
 
         return {
@@ -495,13 +448,14 @@ class pfdo_run(pfdo.pfdo):
         """
         Capture the d_job entries to respective files.
         """
-        if not self.args['noJobLogging']:
-            for key in d_job.keys():
-                with open(
-                    '%s/%s%s' % (str_outputDir, str_prefix, key), "w"
-                ) as f:
-                    f.write(str(d_job[key]))
-                    f.close()
+        if 'noJobLogging' in self.args:
+            if not self.args['noJobLogging']:
+                for key in d_job.keys():
+                    with open(
+                        '%s/%s%s' % (str_outputDir, str_prefix, key), "w"
+                    ) as f:
+                        f.write(str(d_job[key]))
+                        f.close()
         return {
             'status': True
         }
@@ -517,8 +471,9 @@ class pfdo_run(pfdo.pfdo):
         d_pfdo          : dict  = {}
         d_exec          : dict  = {}
 
+        pudb.set_trace()
         self.dp.qprint(
-                "Starting pfdo_run... (please be patient while running)",
+                "Starting pfdo_run analysis... (please be patient while running)",
                 level = 1
         )
 
