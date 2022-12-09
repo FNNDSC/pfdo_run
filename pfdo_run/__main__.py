@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# (c) 2021 Fetal-Neonatal Neuroimaging & Developmental Science Center
+# (c) 2022 Fetal-Neonatal Neuroimaging & Developmental Science Center
 #                   Boston Children's Hospital
 #
 #              http://childrenshospital.org/FNNDSC/
@@ -8,15 +8,12 @@
 #
 
 import  sys, os
-sys.path.insert(1, os.path.join(os.path.dirname(__file__), '../pfdo_run'))
 
-import  pfdo.__main__       as pfdo_main
-import  pfdo
 try:
     from    .               import pfdo_run
     from    .               import __pkg, __version__
 except:
-    from pfdo_run           import pfdo_mgz2image
+    from pfdo_run           import pfdo_run
     from __init__           import __pkg, __version__
 
 from    argparse            import RawTextHelpFormatter
@@ -26,6 +23,17 @@ import  pudb
 import  pfmisc
 from    pfmisc._colors      import Colors
 from    pfmisc              import other
+
+import  pfdo
+from    pfdo.__main__       import package_CLIfull          as pfdo_CLIfull
+from    pfdo.__main__       import package_argsSynopsisFull as pfdo_argSynopsis
+from    pfdo.__main__       import parserSA                 as pfdo_parser
+
+from    pfdo.__main__       import DSpackage_CLI              as DSpfdo_CLI
+from    pfdo.__main__       import DSpackage_argsSynopsisFull as DSpfdo_argSynopsis
+from    pfdo.__main__       import parserDS                   as DSpfdo_parser
+
+
 
 str_desc = Colors.CYAN + """
 
@@ -40,7 +48,7 @@ str_desc = Colors.CYAN + """
 
 
 
-                          Path-File Do Run
+                            Path-File Do Run
 
         Recursively walk down a directory tree and run a CLI spec'd app
         on files in each directory (optionally filtered by some simple
@@ -63,63 +71,21 @@ str_desc = Colors.CYAN + """
 
 """ + Colors.NO_COLOUR
 
-package_CLI = '''
-                    --exec <CLIcmdToExec>                           \\
-                    --analyzeFileIndex <N>                          \\'''+\
-                    pfdo_main.package_CLI
+package_CLIself = '''
+        --exec <CLIcmdToExec>                                                   \\'''
 
-package_argSynopsis = pfdo_main.package_argSynopsis + '''
+package_argSynopsisSelf = '''
         --exec <CLIcmdToExec>
         The command line expression to apply at each directory node of the
         input tree. See the CLI SPECIFICATION section for more information.
 
-        [--analyzeFileIndex <someIndex>]
-        An optional string to control which file(s) in a specific directory
-        to which the analysis is applied. The default is "-1" which implies
-        *ALL* files in a given directory. Other valid <someIndex> are:
-            'm':   only the "middle" file in the returned file list
-            "f":   only the first file in the returned file list
-            "l":   only the last file in the returned file list
-            "<N>": the file at index N in the file list. If this index
-                   is out of bounds, no analysis is performed.
-            "-1" means all files.
-
 '''
 
-def synopsis(ab_shortOnly = False):
-    scriptName = os.path.basename(sys.argv[0])
-    shortSynopsis =  """
-    NAME
-
-	    pfdo_run
-
-    SYNOPSIS
-
-        pfdo_run """ + package_CLI + """
-
-    BRIEF EXAMPLE
-
-        pfdo_run                                                \\
-            --inputDir /var/www/html/data --fileFilter jpg      \\
-            --outputDir /var/www/html/png                       \\
-            --exec "convert %inputWorkingDir/%inputWorkingFile
-            %outputWorkingDir/%_rmext_inputWorkingFile.png"     \\
-            --threads 0 --printElapsedTime
-    """
-
-    description =  '''
-    DESCRIPTION
-
-        ``pfdo_run`` runs some user specified CLI at each path/file location
-        in an input directory, storing results (and logs) at a corresponding
-        dir location rooted in the output directory.
-
-    ARGS ''' + package_argSynopsis + '''
-
+package_CLItagHelp          = """
     CLI SPECIFICATION
 
-    Any text in the CLI prefixed with a percent char '%' is interpreted in one
-    of two ways.
+    Any text in the CLI arg value string that is prefixed with a percent char
+    '%' is interpreted in one of two ways.
 
     First, any CLI to the ``pfdo_run`` itself can be accessed via '%'. Thus,
     for example a ``%outputDir`` in the ``--exec`` string will be expanded
@@ -141,7 +107,9 @@ def synopsis(ab_shortOnly = False):
 
         --exec "convert %inputWorkingDir/%inputWorkingFile
                         %outputWorkingDir/%inputWorkingFile.jpg"
+"""
 
+package_specialFunctionHelp = """
     SPECIAL FUNCTIONS
 
     Furthermore, `pfdo_run` offers the ability to apply some interal functions
@@ -186,7 +154,45 @@ def synopsis(ab_shortOnly = False):
         faker module.
 
     Functions cannot currently be nested.
+"""
 
+package_CLIfull             = package_CLIself     +   pfdo_CLIfull
+package_CLIDS               = package_CLIself     + DSpfdo_CLI
+package_argsSynopsisFull    =   pfdo_argSynopsis  + package_argSynopsisSelf
+package_argsSynopsisDS      = DSpfdo_argSynopsis  + package_argSynopsisSelf
+
+
+def synopsis(ab_shortOnly = False):
+    scriptName = os.path.basename(sys.argv[0])
+    shortSynopsis =  """
+    NAME
+
+	    pfdo_run
+
+    SYNOPSIS
+
+        pfdo_run """ + package_CLIfull + """
+
+    BRIEF EXAMPLE
+
+        pfdo_run                                                \\
+            --inputDir /var/www/html/data --fileFilter jpg      \\
+            --outputDir /var/www/html/png                       \\
+            --exec "convert %inputWorkingDir/%inputWorkingFile
+            %outputWorkingDir/%_rmext_inputWorkingFile.png"     \\
+            --threads 0 --printElapsedTime
+    """
+
+    description =  '''
+    DESCRIPTION
+
+        ``pfdo_run`` runs some user specified CLI at each path/file location
+        in an input directory, storing results (and logs) at a corresponding
+        dir location rooted in the output directory.
+
+    ARGS ''' +  package_argsSynopsisFull     +\
+                package_CLItagHelp          +\
+                package_specialFunctionHelp + '''
 
     EXAMPLES
 
@@ -235,22 +241,29 @@ def synopsis(ab_shortOnly = False):
     else:
         return shortSynopsis + description
 
-parser              = pfdo_main.parser
-parser.description  = str_desc
 
-parser  = ArgumentParser(description = str_desc, formatter_class = RawTextHelpFormatter)
+parserSelf  = ArgumentParser(description        = 'Self specific',
+                             formatter_class    = RawTextHelpFormatter,
+                             add_help           = False)
 
-parser.add_argument("--exec",
+parserSelf.add_argument("--exec",
                     help    = "command line execution string to perform",
                     dest    = 'exec',
                     default = '')
-parser.add_argument("--analyzeFileIndex",
-                    help    = "file index per directory to analyze",
-                    dest    = 'analyzeFileIndex',
-                    default = '-1')
-def main(argv = None):
-    args = parser.parse_args()
 
+parserSA  = ArgumentParser( description        = str_desc,
+                            formatter_class    = RawTextHelpFormatter,
+                            parents            = [pfdo_parser, parserSelf],
+                            add_help           = False)
+
+parserDS  = ArgumentParser( description        = str_desc,
+                            formatter_class    = RawTextHelpFormatter,
+                            parents            = [DSpfdo_parser, parserSelf],
+                            add_help           = False)
+
+def earlyExit_check(args) -> int:
+    """Perform some preliminary checks
+    """
     if args.man or args.synopsis:
         print(str_desc)
         if args.man:
@@ -259,10 +272,17 @@ def main(argv = None):
             str_help     = synopsis(True)
         print(str_help)
         return 1
-
     if args.b_version:
         print("Name:    %s\nVersion: %s" % (__pkg.name, __version__))
-        sys.exit(1)
+        return 1
+    return 0
+
+def main(args = None):
+
+    if not args:
+        args                = parserSA.parse_args()
+    d_pfdicom_tagExtract    : dict  = {}
+    if earlyExit_check(args): return 1
 
     args.str_version    = __version__
     args.str_desc       = synopsis(True)
