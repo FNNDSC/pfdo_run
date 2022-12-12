@@ -480,8 +480,8 @@ class pfdo_run(pfdo.pfdo):
         d_pfdo          : dict  = {}
         d_exec          : dict  = {}
 
-        set_trace(term_size=(253, 62), host = '0.0.0.0', port = 8900)
-
+        # Some debugging artifact entries -- left for posterity
+        # set_trace(term_size=(253, 62), host = '0.0.0.0', port = 8900)
         # pudb.set_trace()
         self.dp.qprint(
                 "Starting pfdo_run analysis... (please be patient while running)",
