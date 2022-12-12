@@ -471,7 +471,7 @@ class pfdo_run(pfdo.pfdo):
         d_pfdo          : dict  = {}
         d_exec          : dict  = {}
 
-        pudb.set_trace()
+        # pudb.set_trace()
         self.dp.qprint(
                 "Starting pfdo_run analysis... (please be patient while running)",
                 level = 1
