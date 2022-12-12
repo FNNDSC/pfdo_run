@@ -82,6 +82,16 @@ class pfdo_run(pfdo.pfdo):
         self.args['outputWorkingDir']   = ""
         self.args['inputWorkingFile']   = ""
 
+    def get(self, astr_key : str) -> str:
+        """
+        Return the value of <astr_key> in the self.args structure,
+        else return None
+        """
+        if astr_key in self.args:
+            return self.args[astr_key]
+        else:
+            return None
+
     def inputReadCallback(self, *args, **kwargs):
         """
         This method does not actually read in any files, but
