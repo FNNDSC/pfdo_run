@@ -1,6 +1,7 @@
 # Turn off all logging for modules.
 import logging
 logging.disable(logging.CRITICAL)
+from    pudb.remote             import set_trace
 
 
 # System imports
@@ -24,8 +25,6 @@ import      math
 import      re
 import      pudb
 import      pftree
-
-__version__ = '3.0.0'
 
 class pfdo_run(pfdo.pfdo):
     """
@@ -480,6 +479,8 @@ class pfdo_run(pfdo.pfdo):
         b_timerStart    : bool  = False
         d_pfdo          : dict  = {}
         d_exec          : dict  = {}
+
+        set_trace(term_size=(253, 62), host = '0.0.0.0', port = 8900)
 
         # pudb.set_trace()
         self.dp.qprint(
