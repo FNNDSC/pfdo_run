@@ -1,254 +1,85 @@
-pfdo_run 2.2.8
-==================
+pfdo_run
+========
 
-.. image:: https://badge.fury.io/py/pfdo_run.svg
-    :target: https://badge.fury.io/py/pfdo_run
+.. image:: https://github.com/FNNDSC/pfdo_run/actions/workflows/ci.yml/badge.svg
+    :target: https://github.com/FNNDSC/pfdo_run/actions/workflows/ci.yml
 
-.. image:: https://travis-ci.org/FNNDSC/pfdo_run.svg?branch=master
-    :target: https://travis-ci.org/FNNDSC/pfdo_run
+.. image:: https://img.shields.io/pypi/v/pfdo_run.svg
+    :target: https://pypi.org/project/pfdo_run/
 
-.. image:: https://img.shields.io/badge/python-3.5%2B-blue.svg
-    :target: https://badge.fury.io/py/pfdo_run
+.. image:: https://img.shields.io/badge/python-3.11%2B-blue.svg
+    :target: https://pypi.org/project/pfdo_run/
+
+Run a command, written as a pftag template, in every directory of a tree.
 
 .. contents:: Table of Contents
 
-
 Overview
----------
+--------
 
-``pfdo_run`` provides a powerful mechanism for exploring an input directory space for files and directories of interest, and applying a user specified CLI in the space of each hit. Outputs are saved typically in an output tree that mirrors the input tree.
+``pfdo_run`` walks an input directory with ``pftree``, selects files in each directory with the ``pfdo`` filters and ``--analyzeFileIndex``, and runs the ``--exec`` command once per selected file. The command is a ``pftag`` template: ``%{inputWorkingDir}``, ``%{outputWorkingDir}`` and ``%{inputWorkingFile}`` name the directory being processed, its counterpart in the output tree, and the file; functions derive names, ``%{inputWorkingFile|rmext}.png``. The output tree mirrors the input tree, and each job leaves its command, stdout, stderr and return code beside its results. Directories run in parallel under ``--threads``.
 
-Internally, ``pfdo_run`` leverages the ``pftree`` infrastructure to perform the space exploration and allows for callback methods to be applied at each stage of ``read``, ``analyze`` and ``write`` for valid target hits.
-
-Addtionally, ``pfdo_run`` can apply some additional functions to its hits such as ``md5`` hashing, string replacement, extension removal and more. See below for more detail.
+The template is split like a shell command line and each argument has its tags resolved on its own, so a path with a space stays one argument and nothing a file name contains can change the command. The command runs without a shell.
 
 Installation
 ------------
 
-Dependencies
-~~~~~~~~~~~~
+.. code:: bash
 
-The following dependencies are installed on your host system/python3 virtual env (they will also be automatically installed if pulled from pypi):
+    pip install pfdo_run
 
--  ``pfmisc`` (various misc modules and classes for the pf* family of objects)
--  ``pftree`` (create a dictionary representation of a filesystem hierarchy)
--  ``pfdo``   (the base module that does the core interfacing with ``pftree``)
+Python 3.11 or newer; depends on ``pfdo`` and ``pftag``.
 
-Using ``PyPI``
-~~~~~~~~~~~~~~
-
-The best method of installing this script and all of its dependencies is
-by fetching it from PyPI
+Command line
+------------
 
 .. code:: bash
 
-        pip3 install pfdo_run
+    pfdo_run --inputDir /data --outputDir /png --fileFilter 'glob:*.jpg' --threads 4 \
+        --exec "convert %{inputWorkingDir}/%{inputWorkingFile} %{outputWorkingDir}/%{inputWorkingFile|rmext}.png"
 
-CLI specification
------------------
+    pfdo_run --inputDir /dicom --outputDir /nifti --fileFilter 'glob:*.dcm' --analyzeFileIndex f \
+        --exec "mri_convert %{inputWorkingDir}/%{inputWorkingFile} %{outputWorkingDir}/%{inputWorkingDir|basename}.nii.gz"
 
-Any text in the CLI prefixed with a percent char ``%`` is interpreted in one of two ways.
+    pfdo_run --man
 
-First, any CLI to the ``pfdo_run`` itself can be accessed via ``%``. Thus, for example a ``%outputDir`` in the ``--exec`` string will be expanded to the ``outputDir`` of the ``pfdo_run``.
+All of ``pftree``'s and ``pfdo``'s options apply. ``pfdo_run`` adds:
 
-Secondly, three internal '%' variables are available:
+``--exec <commandTemplate>``
+    The command to run per selected file. Tags: ``%{inputWorkingDir}``, ``%{outputWorkingDir}``, ``%{inputWorkingFile}``, every option by name (``%{outputDir}``), and pftag's core tags. Functions: ``rmext``, ``ext``, ``basename``, ``dirname``, ``replace``, ``re``, ``upper``, ``lower``, ``strip``, ``pad``, ``slice``, ``md5``, ``sha256``, ``strftime``, ``mask``. A tag that does not resolve fails that job before it runs.
 
-* ``%inputWorkingDir``  - the current input tree working directory
-* ``%outputWorkingDir`` - the current output tree working directory
-* ``%inputWorkingFile`` - the current file being processed
+``--noJobLogging``
+    Do not write ``<file>-cmd``, ``<file>-stdout``, ``<file>-stderr`` and ``<file>-returncode`` beside each job's results. The stream files are written live and rendered as a terminal would show them when the job ends.
 
-These internal variables allow for contextual specification of values. For example, a simple CLI touch command could be specified as
+A job whose command exits non-zero fails its directory; the run continues and the directory's record says why. ``--json`` prints the whole result, each directory's jobs included.
 
-.. code:: bash
+Library
+-------
 
-    --exec "touch %outputWorkingDir/%inputWorkingFile"
+.. code:: python
 
-or a command to convert an input ``png`` to an output ``jpg`` using the ImageMagick ``convert`` utility
+    from pathlib import Path
+    from pfdo_run import PfdoRun, PfdoRunOptions
 
-.. code:: bash
+    options = PfdoRunOptions(
+        inputDir=Path("/data"), outputDir=Path("/png"), fileFilter="glob:*.jpg", threads=4,
+        exec="convert %{inputWorkingDir}/%{inputWorkingFile} %{outputWorkingDir}/%{inputWorkingFile|rmext}.png",
+    )
+    result = PfdoRun(options).run()
+    for key, stage in result.process.analyze.items():
+        for job in stage.payload["jobs"]:
+            print(key, job["file"], job["run"]["returncode"] if job["run"] else job["errors"])
 
-    --exec "convert %inputWorkingDir/%inputWorkingFile
-                    %outputWorkingDir/%inputWorkingFile.jpg"
+``pfdo_run.__main__`` exposes its parser and manual in parts (``parser_build(standalone=False)``, ``synopsis(command=...)``, ``CLI_DS``, ``ARGS_SYNOPSIS_DS``) so that a ChRIS plugin such as ``pl-shexec`` composes its own command around them.
 
-Special Functions
------------------
+Changes in 4.0
+--------------
 
-Furthermore, ``pfdo_run`` offers the ability to apply some interal functions to a tag. The template for specifying a function to apply is:
-
-.. code::
-
-    %_<functionName>[|arg1|arg2|...]_<tag>
-
-thus, a function is identified by a ``<functionName>`` that is prefixed and suffixed by an underscore ``_`` and appears in front of the tag to process. Possible args to the ``<functionName>`` are separated by pipe ``|`` characters.
-
-For example a string snippet that contains
-
-.. code:: bash
-
-    %_strrepl|.|-_inputWorkingFile.txt
-
-will replace all occurences of ``.`` in the ``%inputWorkingFile`` with ``-``. Also of interest, the trailing ``.txt`` is preserved in the final pattern for the result.
-
-The following functions are available:
-
-.. code:: html
-
-    %_md5[|<len>]_<tagName>
-    Apply an 'md5' hash to the value referenced by <tagName> and optionally
-    return only the first <len> characters.
-
-    %_strmsk|<mask>_<tagName>
-    Apply a simple mask pattern to the value referenced by <tagName>. Chars
-    that are "*" in the mask are passed through unchanged. The mask and its
-    target should be the same length.
-
-    %_strrepl|<target>|<replace>_<tagName>
-    Replace the string <target> with <replace> in the value referenced by
-    <tagName>.
-
-    %_rmext_<tagName>
-    Remove the "extension" of the value referenced by <tagName>. This
-    of course only makes sense if the <tagName> denotes something with
-    an extension!
-
-    %_name_<tag>
-    Replace the value referenced by <tag> with a name generated by the
-    faker module.
-
-Functions cannot currently be nested.
-
-Command line arguments
-----------------------
-
-.. code:: html
-
-
-        -I|--inputDir <inputDir>
-        Input base directory to traverse.
-
-        -O|--outputDir <outputDir>
-        The output root directory that will contain a tree structure identical
-        to the input directory, and each "leaf" node will contain the analysis
-        results.
-
-        --exec <CLIcmdToExec>
-        The command line expression to apply at each directory node of the
-        input tree. See the CLI SPECIFICATION section for more information.
-
-        [-i|--inputFile <inputFile>]
-        An optional <inputFile> specified relative to the <inputDir>. If
-        specified, then do not perform a directory walk, but convert only
-        this file.
-
-        [-f|--fileFilter <someFilter1,someFilter2,...>]
-        An optional comma-delimated string to filter out files of interest
-        from the <inputDir> tree. Each token in the expression is applied in
-        turn over the space of files in a directory location, and only files
-        that contain this token string in their filename are preserved.
-
-        [-d|--dirFilter <someFilter1,someFilter2,...>]
-        An additional filter that will further limit any files to process to
-        only those files that exist in leaf directory nodes that have some
-        substring of each of the comma separated <someFilter> in their
-        directory name.
-
-        [--analyzeFileIndex <someIndex>]
-        An optional string to control which file(s) in a specific directory
-        to which the analysis is applied. The default is "-1" which implies
-        *ALL* files in a given directory. The space of valid <someIndex> are:
-
-            'm':   only the "middle" file in the returned file list
-            "f":   only the first file in the returned file list
-            "l":   only the last file in the returned file list
-            "<N>": the file at index N in the file list. If this index
-                   is out of bounds, no analysis is performed.
-            "-1":  all files.
-
-        [--outputLeafDir <outputLeafDirFormat>]
-        If specified, will apply the <outputLeafDirFormat> to the output
-        directories containing data. This is useful to blanket describe
-        final output directories with some descriptive text, such as
-        'anon' or 'preview'.
-
-        This is a formatting spec, so
-
-            --outputLeafDir 'preview-%s'
-
-        where %s is the original leaf directory node, will prefix each
-        final directory containing output with the text 'preview-' which
-        can be useful in describing some features of the output set.
-
-        [--threads <numThreads>]
-        If specified, break the innermost analysis loop into <numThreads>
-        threads.
-
-        [--noJobLogging]
-        If specified, then suppress the logging of per-job output. Usually
-        each job that is run will have, in the output directory, three
-        additional files:
-
-                %inputWorkingFile-returncode
-                %inputWorkingFile-stderr
-                %inputWorkingFile-stdout
-
-        By specifying this option, the above files are not recorded.
-
-        [-x|--man]
-        Show full help.
-
-        [-y|--synopsis]
-        Show brief help.
-
-        [--json]
-        If specified, output a JSON dump of final return.
-
-        [--followLinks]
-        If specified, follow symbolic links.
-
-        -v|--verbosity <level>
-        Set the app verbosity level.
-
-            0: No internal output;
-            1: Run start / stop output notification;
-            2: As with level '1' but with simpleProgress bar in 'pftree';
-            3: As with level '2' but with list of input dirs/files in 'pftree';
-            5: As with level '3' but with explicit file logging for
-                    - read
-                    - analyze
-                    - write
-
-
-Examples
---------
-
-Perform a ``pfdo_run`` down some input directory and convert all input ``jpg`` files to ``png`` in the output tree:
-
-.. code:: bash
-
-    pfdo_run                                                \
-        -I /var/www/html/data --fileFilter jpg              \
-        -O /var/www/html/png                                \
-        --exec "convert %inputWorkingDir/%inputWorkingFile
-        %outputWorkingDir/%_rmext_inputWorkingFile.png"     \
-        --threads 0 --printElapsedTime
-
-The above will find all files in the tree structure rooted at ``/var/www/html/data`` that also contain the string ``jpg`` anywhere in the filename. For each file found, a ``convert`` conversion will be called, storing a converted file in the same tree location in the output directory as the original input.
-
-Note the special construct, ``%_remext_inputWorkingFile.png`` -- the ``%_rmext_`` designates a built in funtion to apply to the tag value. In this case, to "remove the extension" from the ``%inputWorkingFile`` string.
-
-Consider an example where only one file in a branched inputdir
-space is to be preserved:
-
-.. code:: bash
-
-    pfdo_run                                                \
-        -I (pwd)/raw -O (pwd)/out                           \
-        -d 100307 -f " "                                    \
-        --exec "cp %inputWorkingDir/brain.mgz
-        %outputWorkingDir/brain.mgz"                        \
-        --threads 0 --verbosity 3 --noJobLogging
-
-Here, the input directory space is pruned for a directory leaf node that contains the string 100307. The exec command essentially copies the file `brain.mgz` in that target directory to the corresponding location in the output tree.
-
-Finally the elapsed time and a JSON output are printed.
-
+- Built on ``pfdo`` 6 and ``pftag`` 3; ``pfmisc``, ``pudb`` and ``Faker`` are no longer dependencies.
+- The template grammar is pftag's: ``%{name}`` and ``%{name|fn(arg)}``. The 3.x forms ``%name`` and ``%_fn_name`` are gone; a bare ``%name`` of a known tag is reported as a 1.x template and fails the job.
+- The command is split before substitution and run without a shell; 3.x substituted into the string and split on whitespace, so a path with a space broke it.
+- The command runs through ``hostlib``: no shell, both streams read concurrently as they arrive, so nothing is dropped and nothing can deadlock; 3.x read stdout line by line, lost the last line, and could deadlock on stderr. At ``--verbosity 2`` and above the output also streams to the console while the job runs.
+- Per-job records are written by default and ``--noJobLogging`` exists; in 3.x the option was documented but undefined, so logs were never written. The stream files are rendered as a terminal would have shown them, so a redrawn progress bar is one line; the record in ``--json`` keeps every frame.
+- Each job's record is ``FileJob``: the file, the command as built, status, errors, and ``run``, hostlib's envelope of the run (both streams, exit status, host facts, timing) when the command ran.
+- A non-zero exit status fails the job and its directory; the run's status is truthful (3.x reported False always).
+- ``main(argv)`` honours ``argv``; ``--version``, ``--man`` and ``--synopsis`` exit 0; packaging is ``pyproject.toml`` only, published from CI on a ``v*`` tag.

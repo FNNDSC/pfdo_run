@@ -1,515 +1,168 @@
-# Turn off all logging for modules.
+"""pfdo_run: run a command in every directory of a tree.
+
+``PfdoRun`` is the member of the pfdo family whose per-directory operation is a command
+written by the user as a pftag template. For every file the directory's
+``--analyzeFileIndex`` selects, the template is split like a shell command, each
+argument has its tags resolved against that directory's paths and the file, and the
+result is run through hostlib: without a shell, both streams read as they arrive, the
+record kept beside the results and, at ``--verbosity 2`` and above, streamed to the
+console while the command runs.
+
+Key components:
+    - PfdoRun: the engine; ``job_run`` builds and runs one command
+    - lookups_forJob: the tags a job can use
+    - sink_build: where a job's output goes while it runs
+
+Typical usage:
+    PfdoRun(PfdoRunOptions(inputDir=Path("/in"), outputDir=Path("/out"),
+            exec="convert %{inputWorkingDir}/%{inputWorkingFile} "
+                 "%{outputWorkingDir}/%{inputWorkingFile|rmext}.jpg")).run()
+
+Dependencies:
+    - pfdo, pftag, hostlib
+"""
+
+from __future__ import annotations
+
+import dataclasses
 import logging
-logging.disable(logging.CRITICAL)
-from    pudb.remote             import set_trace
+import shlex
+
+from hostlib.proc.run import job_run as host_jobRun
+from hostlib.sink import ConsoleSink, FileSink, JobSink, NullSink, TeeSink
+from pfdo.pfdo import Pfdo
+from pftag.models import ArgvResult, TagOptions
+from pftag.pftag import Pftag
+
+from pfdo_run.models import DirNode, FileJob, JobResult, JobSpec, PfdoRunOptions, StageResult
+
+logger: logging.Logger = logging.getLogger("pfdo_run")
+
+OPTIONS_LOOKUP: str = "options"
+JOB_LOOKUP: str = "pfdo"
+STREAM_VERBOSITY: int = 2
 
 
-# System imports
-import      json
-import      os
-import      pathlib
-import      logging
-from        argparse            import  Namespace
+def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dict[str, dict[str, str]]:
+    """The tag dictionaries one job can resolve against.
 
-# Project specific imports
-import      pfmisc
-from        pfmisc._colors      import  Colors
-from        pfmisc              import  other
-from        pfmisc              import  error
-from        faker               import  Faker
+    Args:
+        options: the run's options; every field becomes a tag in the ``options``
+            dictionary, so ``%{outputDir}`` works.
+        node: the directory being processed.
+        fileName: the file the job is built for.
 
-from        pfdo                import  pfdo
-import      subprocess
-import      hashlib
-import      math
-import      re
-import      pudb
-import      pftree
+    Returns:
+        ``options`` and ``pfdo`` (``inputWorkingDir``, ``outputWorkingDir``,
+        ``inputWorkingFile``), the latter also reachable qualified.
+    """
+    optionTags: dict[str, str] = {
+        name: str(value) for name, value in dataclasses.asdict(options).items() if name not in ("exec",)
+    }
+    jobTags: dict[str, str] = {
+        "inputWorkingDir": str(node.path),
+        "outputWorkingDir": str(node.outputPath),
+        "inputWorkingFile": fileName,
+    }
+    return {OPTIONS_LOOKUP: optionTags, JOB_LOOKUP: jobTags}
 
-class pfdo_run(pfdo.pfdo):
+
+def sink_build(options: PfdoRunOptions, node: DirNode, fileName: str) -> JobSink:
+    """Where one job's output goes while it runs.
+
+    Args:
+        options: ``noJobLogging`` turns the file record off; ``verbosity`` of
+            ``STREAM_VERBOSITY`` or more streams to the console.
+        node: the directory; the record lands in its ``outputPath``.
+        fileName: the file; the record is ``<file>-cmd``, ``-stdout``, ``-stderr``,
+            ``-returncode``, the stream files rendered as a terminal would show them.
+
+    Returns:
+        A file sink, a console sink, both, or nothing.
+    """
+    sinks: list[JobSink] = []
+    if not options.noJobLogging:
+        sinks.append(FileSink(node.outputPath / fileName, rendered=True))
+    if options.verbosity >= STREAM_VERBOSITY:
+        sinks.append(ConsoleSink())
+    if not sinks:
+        return NullSink()
+    return sinks[0] if len(sinks) == 1 else TeeSink(*sinks)
+
+
+class PfdoRun(Pfdo):
+    """Run a command template in every directory of the input tree.
+
+    Attributes:
+        options: the PfdoRunOptions in force.
+        argvTemplate: the ``--exec`` template split like a shell command, once.
+
+    Example:
+        >>> tool = PfdoRun(PfdoRunOptions(inputDir=Path("."), outputDir=Path("/tmp/o"), exec="true"))
+        >>> tool.argvTemplate
+        ['true']
     """
 
-    A class for navigating down a dir tree and providing
-    hooks for some (subclass) analysis
+    def __init__(self, options: PfdoRunOptions) -> None:
+        super().__init__(options)
+        self.options: PfdoRunOptions = options
+        self.argvTemplate: list[str] = shlex.split(options.exec) if options.exec else []
 
-    """
+    def inputRead_callback(self, node: DirNode) -> StageResult:
+        """Create the directory's output path and pass its files on.
 
-    # Turn off logging for the 'faker' module and create a class instance
-    # of the object
-    fakelogger              = logging.getLogger('faker')
-    fakelogger.propagate    = False
-    fake                    = Faker()
+        Args:
+            node: the directory.
 
-    _dictErr = {
-        'outputDirFail'   : {
-            'action'        : 'trying to check on the output directory, ',
-            'error'         : 'directory not specified. This is a *required* input.',
-            'exitCode'      : 1},
-        'outputFileExists'   : {
-            'action'        : 'attempting to write an output file, ',
-            'error'         : 'it seems a file already exists. Please run with --overwrite to force overwrite.',
-            'exitCode'      : 2}
-        }
-
-
-    def declare_selfvars(self):
+        Returns:
+            Success with the files; failure if there are none.
         """
-        A block to declare self variables
+        node.outputPath.mkdir(parents=True, exist_ok=True)
+        return StageResult(status=bool(node.files), files=list(node.files))
+
+    def inputAnalyze_callback(self, node: DirNode, read: StageResult) -> StageResult:
+        """Run the command for every file ``--analyzeFileIndex`` selects.
+
+        Args:
+            node: the directory.
+            read: the read stage's result.
+
+        Returns:
+            The files run, with every FileJob in ``payload["jobs"]``; ``status`` is
+            True only when every job was built, started and exited 0.
         """
-
-        #
-        # Object desc block
-        #
-        self.str_desc                   = ''
-        self.__name__                   = "pfdo_run"
-
-    def __init__(self, *args, **kwargs):
-        """
-        Constructor for pfdo_run.
-
-        This basically just calls the parent constructor and
-        adds some child-specific data.
-        """
-
-        super().__init__(*args, **kwargs)
-
-        pfdo_run.declare_selfvars(self)
-
-        # Set some "special" flags for contextual expansion in the
-        # analyzeCallback method
-        self.args['inputWorkingDir']    = ""
-        self.args['outputWorkingDir']   = ""
-        self.args['inputWorkingFile']   = ""
-
-    def get(self, astr_key : str) -> str:
-        """
-        Return the value of <astr_key> in the self.args structure,
-        else return None
-        """
-        if astr_key in self.args:
-            return self.args[astr_key]
-        else:
-            return None
-
-    def inputReadCallback(self, *args, **kwargs):
-        """
-        This method does not actually read in any files, but
-        exists to preserve the list of files associated with a
-        given input directory.
-
-        By preserving and returning this file list, the next
-        callback function in this pipeline is able to receive an
-        input path and a list of files in that path.
-        """
-        str_path            : str       = ''
-        l_fileProbed        : list      = []
-        b_status            : bool      = True
-        filesProbed         : int       = 0
-        str_outputWorkingDir: str       = ""
-
-        if len(args):
-            at_data         = args[0]
-            str_path        = at_data[0]
-            l_fileProbed    = at_data[1]
-
-        # Need to create the output dir appropriately here!
-        str_outputWorkingDir    = str_path.replace(
-                                        self.args['inputDir'],
-                                        self.args['outputDir']
-        )
-        self.dp.qprint("mkdir %s" % str_outputWorkingDir,
-                        level = 3)
-        other.mkdir(str_outputWorkingDir)
-
-        if not len(l_fileProbed): b_status = False
-        l_fileProbed.sort()
-
-        return {
-            'status':           b_status,
-            'l_fileProbed':     l_fileProbed,
-            'str_path':         str_path,
-            'filesProbed':      filesProbed
-        }
-
-    def inputAnalyzeCallback(self, *args, **kwargs):
-        """
-        Callback for doing actual work on the read data. Note that the
-        fileListToAnalyze_determine() is called, and its results are
-        processed by a CLI spawned job.
-        """
-        b_status            : bool  = False
-        l_fileProbed        : list  = []
-        l_fileAnalyzed      : list  = []
-        filesAnalyzed       : int   = 0
-        d_inputReadCallback : dict  = {}
-        d_job               : dict  = {}
-        str_outputWorkingDir: str   = ""
-
-        for k, v in kwargs.items():
-            if k == 'path':         str_path    = v
-
-        if len(args):
-            at_data             = args[0]
-            str_path            = at_data[0]
-            d_inputReadCallback = at_data[1]
-
-        str_outputWorkingDir    = str_path.replace(
-                                        self.args['inputDir'],
-                                        self.args['outputDir']
-        )
-        if 'l_fileProbed' in d_inputReadCallback.keys():
-            l_fileProbed        = self.fileListToAnalyze_determine(
-                                    d_inputReadCallback['l_fileProbed']
-                                )
-            for str_file in l_fileProbed:
-                d_tagProcess    = self.tagsInString_process(self.args['exec'],
-                                            inputWorkingDir   = str_path,
-                                            inputWorkingFile  = str_file,
-                                            outputWorkingDir  = str_outputWorkingDir
-                                    )
-                if d_tagProcess['status']:
-                    str_cmd     = d_tagProcess['str_result']
-
-                    # Run the job and provide realtime stdout
-                    # and post-run stderr
-                    self.dp.qprint(str_cmd, level = 5)
-                    d_job = self.job_run(str_cmd)
-                    self.job_stdwrite(d_job, str_outputWorkingDir, str_file + '_')
-
-            b_status            = True
-            filesAnalyzed      += len(l_fileProbed)
-
-        return {
-            'status':           b_status,
-            'str_path':         str_path,
-            'l_fileAnalyzed':   l_fileProbed,
-            'filesAnalyzed':    filesAnalyzed,
-            'd_job':            d_job
-        }
-
-
-    def exec(self) -> dict:
-        """
-        The main entry point for connecting methods of this class
-        to the appropriate callbacks of the `pftree.tree_process()`.
-        Note that the return json of each callback is available to
-        the next callback in the queue as the second tuple value in
-        the first argument passed to the callback.
-        """
-        d_exec     : dict    = {}
-
-        other.mkdir(self.args['outputDir'])
-        d_exec     = self.pf_tree.tree_process(
-                            inputReadCallback       = self.inputReadCallback,
-                            analysisCallback        = self.inputAnalyzeCallback,
-                            outputWriteCallback     = None,
-                            persistAnalysisResults  = False
-        )
-        return d_exec
-
-    def tagsInString_process(self, astr, *args, **kwargs):
-        """
-        This method substitutes tags in the user CLI exec that are '%'-tagged
-        in a %<template> pattern. <template> can be any variable in the
-        internal self.args dictionary.
-
-        Additionally, the following special <templates> are processed:
-
-        * '%inputWorkingDir'  - the current input tree working directory
-        * '%outputWorkingDir' - the current output tree working directory
-        * '%inputWorkingFile' - the current file being processed
-
-        Furthermore, leveraging similar code used elsewhere, it is also
-        possible to apply certain permutations/functions to a tag. For example,
-        a function is identified by an underscore prefixed and suffixed string
-        as part of the CLI exec string. If found, this function is applied to
-        the tag value. For example a string snippet that contains
-
-            %_strrepl|.,-_inputWorkingFile.txt
-
-        will replace all occurences of '.' in the %inputWorkingFile with '-'.
-        Also of interest, the trailing ".txt" is preserved in the final pattern
-        for the result.
-
-        Note the template for specifying a function to apply is:
-
-            %_<functionName>[|comma-separated-arglist]_<tag>
-
-        So, to remove the extension from an %inputWorkingFile, do
-
-            %_rmext_inputWorkingFile
-
-        Functions cannot currently be nested.
-
-        """
-
-        def md5_process(func, str_replace):
-            """
-            md5 mangle the <str_replace>.
-            """
-            nonlocal    astr
-            l_funcTag   = []        # a function/tag list
-            l_args      = []        # the 'args' of the function
-            chars       = ''        # the number of resultant chars from func
-                                    # result to use
-            str_replace = hashlib.md5(str_replace.encode('utf-8')).hexdigest()
-            l_funcTag   = func.split('_')[1:]
-            func        = l_funcTag[0]
-            l_args      = func.split('|')
-            if len(l_args) > 1:
-                chars   = l_args[1]
-                str_replace     = str_replace[0:int(chars)]
-            astr        = astr.replace('_%s_' % func, '')
-            return astr, str_replace
-
-        def strmsk_process(func, str_replace):
-            """
-            string mask
-            """
-            nonlocal    astr
-            l_funcTag   = []        # a function/tag list
-            l_funcTag   = func.split('_')[1:]
-            func        = l_funcTag[0]
-            str_msk     = func.split('|')[1]
-            l_n = []
-            for i, j in zip(list(str_replace), list(str_msk)):
-                if j == '*':    l_n.append(i)
-                else:           l_n.append(j)
-            str_replace = ''.join(l_n)
-            astr        = astr.replace('_%s_' % func, '')
-            return astr, str_replace
-
-        def strrepl_process(func, str_replace):
-            """
-            find and replace spaces in string
-            """
-            nonlocal    astr
-            l_funcTag   = []        # a function/tag list
-            l_args      = []        # the 'args' of the function
-            l_funcTag   = func.split('_')[1:]
-            func        = l_funcTag[0]
-            l_args      = func.split('|')
-            str_char    = ''
-            if len(l_args) > 1:
-                str_find = l_args[1]
-                str_repl = l_args[2]
-            # strip out all non-alphnumeric chars and
-            # replace with space
-            str_replace = re.sub(r'\W+', ' ', str_replace)
-            # replace all spaces with str_char
-            str_replace = str_char.join(str_replace.split())
-            astr        = astr.replace('_%s_' % func, '')
-            return astr, str_replace
-
-        def rmext_process(func, str_replace):
-            """
-            Remove the extension from <str_replace>.
-
-                %_rmext|_inputWorkingFile
-
-            """
-            nonlocal    astr
-            l_funcTag   = []        # a function/tag list
-            l_args      = []        # the 'args' of the function
-            l_funcTag   = func.split('_')[1:]
-            func        = l_funcTag[0]
-            l_args      = func.split('|')
-            str_char    = ''
-            str_replace = os.path.splitext(str_replace)[0]
-            astr        = astr.replace('_%s_' % func, '')
-            return astr, str_replace
-
-        def convertToNumber (s):
-            return int.from_bytes(s.encode(), 'little')
-
-        def convertFromNumber (n):
-            return n.to_bytes(math.ceil(n.bit_length() / 8), 'little').decode()
-
-        def name_process(func, str_replace):
-            """
-            replace str_replace with a name.
-
-            Note this sub-function can take as an argument a seed, which
-            is then used to seed the name caller assuring that subsequent
-            calls to the name generation result in the same output.
-
-            This is a WIP!
-            """
-            # pudb.set_trace()
-            nonlocal    astr
-            l_funcTag   = []        # a function/tag list
-            l_args      = []        # the 'args' of the function
-            l_funcTag   = func.split('_')[1:]
-            func        = l_funcTag[0]
-            l_args      = func.split('|')
-            if len(l_args) > 1:
-                str_argTag  = l_args[1]
-                str_argTag  = re.sub('([a-zA-Z])', lambda x: x.groups()[0].upper(), str_argTag, 1)
-                randSeed    = convertToNumber(str_argTag)
-                Faker.seed(randSeed)
-            str_firstLast   = pfdo_run.fake.name()
-            l_firstLast     = str_firstLast.split()
-            str_first       = l_firstLast[0]
-            str_last        = l_firstLast[1]
-            str_replace     = '%s^%s' % (str_last.upper(), str_first.upper())
-            astr            = astr.replace('_%s_' % func, '')
-            return astr, str_replace
-
-        def tag_lookup(astr_tag, **kwargs) -> str:
-            """
-            Return the tag value of the %<string> -- this is either
-            a static lookup from one of the internal self.args keys,
-            or one of the "dynamic" tag values.
-            """
-            str_value   : str       = ""
-
-            # First, set the return value based off the static self.args
-            str_value   = self.args[astr_tag]
-
-            # now, if however the tag is in the **kwargs, use that value
-            # instead
-            if astr_tag in kwargs.keys():   str_value   = kwargs[astr_tag]
-
-            return str_value
-
-
-        b_tagsFound     : bool  = False
-        str_replace     : str   = ''        # The lookup/processed tag value
-        l_tags          : list  = []        # The input string split by '%'
-        l_tagsToSub     : list  = []        # Remove any noise etc from each tag
-        func            : str   = ''        # the function to apply
-        tag             : str   = ''        # the tag in the funcTag combo
-
-        if '%' in astr:
-            # pudb.set_trace()
-            l_tags          = astr.split('%')[1:]
-            # Now, from the possible mangled l_tag strings, make a "clean"
-            # list of actual correct tags to sub
-            l_tagsToSub     = [i for b in l_tags for i in self.args if i in b]
-            for tag, func in zip(l_tagsToSub, l_tags):
-                b_tagsFound     = True
-                str_replace     = tag_lookup(tag, **kwargs)
-                if 'md5'        in func: astr, str_replace = md5_process(     func, str_replace)
-                if 'strmsk'     in func: astr, str_replace = strmsk_process(  func, str_replace)
-                if 'strrepl'    in func: astr, str_replace = strrepl_process( func, str_replace)
-                if 'name'       in func: astr, str_replace = name_process(    func, str_replace)
-                if 'rmext'      in func: astr, str_replace = rmext_process(   func, str_replace)
-                astr  = astr.replace('%' + tag, str_replace, 1)
-
-        return {
-            'status':       True,
-            'b_tagsFound':  b_tagsFound,
-            'str_result':   astr
-        }
-
-    def job_run(self, str_cmd):
-        """
-        Running some CLI process via python is cumbersome. The typical/easy
-        path of
-                            os.system(str_cmd)
-
-        is deprecated and prone to hidden complexity. The preferred
-        method is via subprocess, which has a cumbersome processing
-        syntax. Still, this method runs the `str_cmd` and returns the
-        stderr and stdout strings as well as a returncode.
-        Providing readtime output of both stdout and stderr seems
-        problematic. The approach here is to provide realtime
-        output on stdout and only provide stderr on process completion.
-        """
-        d_ret       : dict = {
-            'stdout':       "",
-            'stderr':       "",
-            'cmd':          "",
-            'cwd':          "",
-            'returncode':   0
-        }
-        str_stdoutLine  : str   = ""
-        str_stdout      : str   = ""
-
-        p = subprocess.Popen(
-                    str_cmd.split(),
-                    stdout      = subprocess.PIPE,
-                    stderr      = subprocess.PIPE,
+        jobs: list[FileJob] = [self.job_run(node, fileName) for fileName in self.filesToAnalyze(node)]
+        return StageResult(
+            status=bool(jobs) and all(job.status for job in jobs),
+            files=[job.file for job in jobs],
+            payload={"jobs": [dataclasses.asdict(job) for job in jobs]},
         )
 
-        # Realtime output on stdout
-        str_stdoutLine  = ""
-        str_stdout      = ""
-        while True:
-            stdout      = p.stdout.readline()
-            if p.poll() is not None:
-                break
-            if stdout:
-                str_stdoutLine = stdout.decode()
-                if int(self.args['verbosity']):
-                    print(str_stdoutLine, end = '')
-                str_stdout      += str_stdoutLine
-        d_ret['cmd']        = str_cmd
-        d_ret['cwd']        = os.getcwd()
-        d_ret['stdout']     = str_stdout
-        d_ret['stderr']     = p.stderr.read().decode()
-        d_ret['returncode'] = p.returncode
-        if int(self.args['verbosity']) and len(d_ret['stderr']):
-            print('\nstderr: \n%s' % d_ret['stderr'])
-        return d_ret
+    def job_run(self, node: DirNode, fileName: str) -> FileJob:
+        """Build and run the command for one file.
 
-    def job_stdwrite(self, d_job, str_outputDir, str_prefix):
+        The template's tags are resolved per argument, so a path with a space stays
+        one argument; the command then runs through hostlib, without a shell, its
+        output going to the sink ``sink_build`` chooses while it runs.
+
+        Args:
+            node: the directory.
+            fileName: the file the command is built for.
+
+        Returns:
+            The job's record. A template that fails to resolve is a job that was
+            never run; a program that cannot start or exits non-zero is a failed run.
         """
-        Capture the d_job entries to respective files.
-        """
-        if 'noJobLogging' in self.args:
-            if not self.args['noJobLogging']:
-                for key in d_job.keys():
-                    with open(
-                        '%s/%s%s' % (str_outputDir, str_prefix, key), "w"
-                    ) as f:
-                        f.write(str(d_job[key]))
-                        f.close()
-        return {
-            'status': True
-        }
-
-    def run(self, *args, **kwargs) -> dict:
-        """
-        This base run method should be called by any descendent classes
-        since this contains the calls to the first `pftree` prove as well
-        as any (overloaded) file filtering.
-        """
-        b_status        : bool  = False
-        b_timerStart    : bool  = False
-        d_pfdo          : dict  = {}
-        d_exec          : dict  = {}
-
-        # Some debugging artifact entries -- left for posterity
-        # set_trace(term_size=(253, 62), host = '0.0.0.0', port = 8900)
-        # pudb.set_trace()
-        self.dp.qprint(
-                "Starting pfdo_run analysis... (please be patient while running)",
-                level = 1
-        )
-
-        for k, v in kwargs.items():
-            if k == 'timerStart':   b_timerStart    = bool(v)
-
-        if b_timerStart:    other.tic()
-        d_pfdo          = super().run(
-                            JSONprint   = False,
-                            timerStart  = False
-        )
-
-        if d_pfdo['status']:
-            d_exec     = self.exec()
-
-        d_ret = {
-            'status':           b_status,
-            'd_pfdo':           d_pfdo,
-            'd_exec':           d_exec,
-            'runTime':          other.toc()
-        }
-
-        if self.args['json']:
-            self.ret_dump(d_ret, **kwargs)
-        else:
-            self.dp.qprint('Returning from pfdo_run...', level = 1)
-
-        return d_ret
+        if not self.argvTemplate:
+            return FileJob(fileName, [], False, ["--exec is empty"])
+        tagger: Pftag = Pftag(TagOptions(lookups=lookups_forJob(self.options, node, fileName), strict=True))
+        resolved: ArgvResult = tagger.argv_process(self.argvTemplate)
+        if not resolved.status:
+            logger.error("%s/%s: %s", node.relPath, fileName, "; ".join(resolved.errors()))
+            return FileJob(fileName, resolved.argv, False, resolved.errors())
+        logger.debug("%s/%s: %s", node.relPath, fileName, shlex.join(resolved.argv))
+        sink: JobSink = sink_build(self.options, node, fileName)
+        run: JobResult = host_jobRun(JobSpec(argv=resolved.argv), sink=sink)
+        if not run.status:
+            logger.warning("%s/%s: %s", node.relPath, fileName, "; ".join(run.errors))
+        return FileJob(fileName, resolved.argv, run.status, list(run.errors), run)

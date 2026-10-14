@@ -1,0 +1,28 @@
+= pfdo_run: purpose
+:toc:
+
+== Abstract
+
+pfdo_run runs a command in every directory of a tree. The command is written once, as a pftag template, and resolved for each directory and file against that directory's input path, its counterpart in the output tree, and the file being handled. It exists so that any command-line tool can be applied across a directory tree, in parallel, with the results and the record of each run landing where the inputs' structure says they should, without anyone writing a loop.
+
+== The problem
+
+A great deal of imaging work is a command-line tool applied to many directories: convert every series, reconstruct every subject, render every volume. The tool exists; what is missing is the loop around it, and the loop is always the same: find the directories, choose which file to start from, build the command with this directory's paths in it, run it, keep its output and exit status somewhere sensible, and put the results in a parallel tree. Written by hand, in shell, that loop is where paths with spaces break, where a failure in one directory stops the batch or goes unnoticed, and where the record of what ran is lost.
+
+In ChRIS the loop has a further constraint: a plugin receives an input and an output directory and must do its work without a shell between the user and the command. pl-shexec exists to let a ChRIS user run an arbitrary command across their data; pfdo_run is the engine under it.
+
+== What pfdo_run is
+
+`PfdoRun` is a `Pfdo`, so the walk, the filters, the per-directory selection of files and the parallel analyze stage are pftree's and pfdo's. What pfdo_run adds is the operation: for each selected file, resolve the `--exec` template and run it.
+
+The template's tags are pftag's. `%{inputWorkingDir}`, `%{outputWorkingDir}` and `%{inputWorkingFile}` describe the job; every option of the run is a tag by name, so `%{outputDir}` is the output root; pftag's functions derive names, `%{inputWorkingFile|rmext}.png`. Resolution is per argument: the template is split like a shell command line first, then each argument has its tags substituted, so a file name with a space stays one argument and nothing a name contains can alter the command. The command then runs through hostlib, directly, without a shell. Both output streams are read as they arrive, so a two-hour reconstruction can be watched at `--verbosity 2`, and each job leaves four files beside its results, the command as run, its stdout, its stderr and its return code, the streams rendered as a terminal would have shown them, unless `--noJobLogging` says otherwise. The job's record carries hostlib's envelope of the run: the complete streams, the exit status, where and when it ran.
+
+A job whose template does not resolve is not run; a job whose command exits non-zero is a failed job. Either fails its directory, and the run continues with the others; the run's result records every job in every directory, which `--json` prints. Directories run in parallel under `--threads`, which is where the analyze stage's thread pool pays: the commands are the work, and they are external processes.
+
+== What pfdo_run is not
+
+It is not a shell. The template is split and run without one, so pipes, redirection, globbing and variable expansion are not available in `--exec`; a command that needs them is written as `sh -c '...'` with the shell's own quoting inside, which is a deliberate step rather than an accident. It is not a workflow engine: one command per file, no dependencies between directories, no retries. And it does nothing a user did not write; the operation is entirely the template.
+
+== Who uses it
+
+pl-shexec is a ChRIS plugin wrapper around pfdo_run, and pl-freesurfer is built on the same design with FreeSurfer in the image. Outside ChRIS, pfdo_run is the command people reach for to apply a converter across a tree without writing the loop.

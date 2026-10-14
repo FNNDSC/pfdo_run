@@ -1,53 +1,67 @@
-#!/usr/bin/env python3
-#
-# (c) 2022 Fetal-Neonatal Neuroimaging & Developmental Science Center
-#                   Boston Children's Hospital
-#
-#              http://childrenshospital.org/FNNDSC/
-#                        dev@babyMRI.org
-#
+"""The ``pfdo_run`` command line and its manual.
 
-import  sys, os
+The parser and the manual are assembled from pftree's and pfdo's parts plus
+pfdo_run's own, and are exposed in parts again for pl-shexec.
 
-try:
-    from    .               import pfdo_run
-    from    .               import __pkg, __version__
-except:
-    from pfdo_run           import pfdo_run
-    from __init__           import __pkg, __version__
+Key components:
+    - CLI_SELF, ARGS_SYNOPSIS_SELF, TAG_HELP, EXAMPLES: pfdo_run's manual pieces
+    - CLI_FULL, CLI_DS, ARGS_SYNOPSIS_FULL, ARGS_SYNOPSIS_DS: the assembled pieces
+    - synopsis, manual_build: the manual
+    - parserSelf_build / parser_build: the parsers
+    - main: the entry point
 
-from    argparse            import RawTextHelpFormatter
-from    argparse            import ArgumentParser
-import  pudb
+Typical usage:
+    pfdo_run --inputDir /in --outputDir /out --fileFilter jpg \\
+        --exec "convert %{inputWorkingDir}/%{inputWorkingFile} %{outputWorkingDir}/out.png"
+    pfdo_run --man
 
-import  pfmisc
-from    pfmisc._colors      import Colors
-from    pfmisc              import other
+Dependencies:
+    - pftree, pfdo (their CLI parts and the manual renderer)
+"""
 
-import  pfdo
-from    pfdo.__main__       import package_CLIfull          as pfdo_CLIfull
-from    pfdo.__main__       import package_argsSynopsisFull as pfdo_argSynopsis
-from    pfdo.__main__       import parserSA                 as pfdo_parser
+from __future__ import annotations
 
-from    pfdo.__main__       import DSpackage_CLI              as DSpfdo_CLI
-from    pfdo.__main__       import DSpackage_argsSynopsisFull as DSpfdo_argSynopsis
-from    pfdo.__main__       import parserDS                   as DSpfdo_parser
+import argparse
+import json
+import sys
+from collections.abc import Sequence
 
+from pfdo.__main__ import ARGS_SYNOPSIS_SELF as PFDO_ARGS_SYNOPSIS_SELF
+from pfdo.__main__ import CLI_SELF as PFDO_CLI_SELF
+from pfdo.__main__ import parserSelf_build as pfdoParserSelf_build
+from pftree.__main__ import (
+    ARGS_SYNOPSIS_CORE,
+    ARGS_SYNOPSIS_DS,
+    ARGS_SYNOPSIS_IO,
+    CLI_CORE,
+    CLI_DS_IO,
+    CLI_IO_CORE,
+    logging_configure,
+    parserCore_build,
+    parserIO_build,
+)
+from pftree.manual import Manual, manual_print
 
+from pfdo_run import __version__
+from pfdo_run.models import PfdoRunOptions, RunResult
+from pfdo_run.pfdo_run import PfdoRun
 
-str_desc = Colors.CYAN + """
+BANNER_ART: str = r"""
 
                           __    _
                          / _|  | |
                    _ __ | |_ __| | ___   _ __ _   _ _ __
-                  | '_ \|  _/ _` |/ _ \ | '__| | | | '_ \\
+                  | '_ \|  _/ _` |/ _ \ | '__| | | | '_ \
                   | |_) | || (_| | (_) || |  | |_| | | | |
                   | .__/|_| \__,_|\___/ |_|   \__,_|_| |_|
                   | |               ______
                   |_|              |______|
 
+"""
 
+BANNER_TITLE: str = "Path-File Do Run"
 
+BANNER_TEXT: str = """
                             Path-File Do Run
 
         Recursively walk down a directory tree and run a CLI spec'd app
@@ -55,11 +69,9 @@ str_desc = Colors.CYAN + """
         expression). Results of each operation are saved in an output tree
         that preserves the input directory structure.
 
+                             -- version {version} --
 
-                             -- version """ + \
-             Colors.YELLOW + __version__ + Colors.CYAN + """ --
-
-        'pfdo_run' demonstrates how to use ``pftree`` to transverse
+        'pfdo_run' demonstrates how to use pftree to traverse
         directory trees and execute some user specified CLI operation
         at each directory level (that optionally contains files of interest).
 
@@ -68,237 +80,259 @@ str_desc = Colors.CYAN + """
         are reconstructed in an output directory, preserving directory
         structure.
 
-
-""" + Colors.NO_COLOUR
-
-package_CLIself = '''
-        --exec <CLIcmdToExec>                                                   \\'''
-
-package_argSynopsisSelf = '''
-        --exec <CLIcmdToExec>
-        The command line expression to apply at each directory node of the
-        input tree. See the CLI SPECIFICATION section for more information.
-
-'''
-
-package_CLItagHelp          = """
-    CLI SPECIFICATION
-
-    Any text in the CLI arg value string that is prefixed with a percent char
-    '%' is interpreted in one of two ways.
-
-    First, any CLI to the ``pfdo_run`` itself can be accessed via '%'. Thus,
-    for example a ``%outputDir`` in the ``--exec`` string will be expanded
-    to the ``outputDir`` of the ``pfdo_run``.
-
-    Secondly, three internal '%' variables are available:
-
-        * '%inputWorkingDir'  - the current input tree working directory
-        * '%outputWorkingDir' - the current output tree working directory
-        * '%inputWorkingFile' - the current file being processed
-
-    These internal variables allow for contextual specification of values. For
-    example, a simple CLI touch command could be specified as
-
-        --exec "touch %outputWorkingDir/%inputWorkingFile"
-
-    or a command to convert an input ``png`` to an output ``jpg`` using the
-    ImageMagick ``convert`` utility
-
-        --exec "convert %inputWorkingDir/%inputWorkingFile
-                        %outputWorkingDir/%inputWorkingFile.jpg"
 """
 
-package_specialFunctionHelp = """
-    SPECIAL FUNCTIONS
+CLI_SELF: str = """
+        --exec <commandTemplate>                                                \\
+        [--noJobLogging]                                                        \\"""
 
-    Furthermore, `pfdo_run` offers the ability to apply some interal functions
-    to a tag. The template for specifying a function to apply is:
+ARGS_SYNOPSIS_SELF: str = """
+        --exec <commandTemplate>
+        The command to run for each selected file of each directory in the
+        input tree, written as a pftag template. See the TAGS section. The
+        template is split like a shell command line, each argument has its
+        tags resolved, and the result is run directly, without a shell: a
+        path with a space in it stays one argument, and shell features such
+        as pipes and redirection are not available.
 
-        %_<functionName>[|arg1|arg2|...]_<tag>
+        [--noJobLogging]
+        If specified, suppress the per-job record. Usually each job that is
+        run leaves, in the output directory, four files:
 
-    thus, a function is identified by a function name that is prefixed and
-    suffixed by an underscore and appears in front of the tag to process.
-    Possible args to the <functionName> are separated by pipe "|" characters.
+                <inputWorkingFile>-cmd
+                <inputWorkingFile>-stdout
+                <inputWorkingFile>-stderr
+                <inputWorkingFile>-returncode
 
-    For example a string snippet that contains
+        The stream files are written as the command runs and, when it ends,
+        rendered as a terminal would have shown them: a progress bar redrawn
+        a hundred times is one line. By specifying this option, the above
+        files are not recorded.
 
-        %_strrepl|.|-_inputWorkingFile.txt
-
-    will replace all occurences of '.' in the %inputWorkingFile with '-'.
-    Also of interest, the trailing ".txt" is preserved in the final pattern
-    for the result.
-
-    The following functions are available:
-
-        %_md5[|<len>]_<tagName>
-        Apply an 'md5' hash to the value referenced by <tagName> and optionally
-        return only the first <len> characters.
-
-        %_strmsk|<mask>_<tagName>
-        Apply a simple mask pattern to the value referenced by <tagName>. Chars
-        that are "*" in the mask are passed through unchanged. The mask and its
-        target should be the same length.
-
-        %_strrepl|<target>|<replace>_<tagName>
-        Replace the string <target> with <replace> in the value referenced by
-        <tagName>.
-
-        %_rmext_<tagName>
-        Remove the "extension" of the value referenced by <tagName>. This
-        of course only makes sense if the <tagName> denotes something with
-        an extension!
-
-        %_name_<tag>
-        Replace the value referenced by <tag> with a name generated by the
-        faker module.
-
-    Functions cannot currently be nested.
+        At --verbosity 2 and above each command's output is also streamed to
+        the console while it runs, so a long job can be watched. Under
+        --threads the streams of concurrent jobs interleave.
 """
 
-package_CLIfull             = package_CLIself     +   pfdo_CLIfull
-package_CLIDS               = package_CLIself     + DSpfdo_CLI
-package_argsSynopsisFull    =   pfdo_argSynopsis  + package_argSynopsisSelf
-package_argsSynopsisDS      = DSpfdo_argSynopsis  + package_argSynopsisSelf
+TAG_HELP: str = """
+    TAGS
 
+        The --exec template is resolved by pftag (see pftag --man or the
+        pftag docs/tags.adoc). A tag is %{name}, optionally piped through
+        functions: %{name|function|function(arg, arg)}. Three tags describe
+        the job:
 
-def synopsis(ab_shortOnly = False):
-    scriptName = os.path.basename(sys.argv[0])
-    shortSynopsis =  """
-    NAME
+            %{inputWorkingDir}    the input directory being processed
+            %{outputWorkingDir}   its counterpart in the output tree
+            %{inputWorkingFile}   the file being processed
 
-	    pfdo_run
+        and every option of pfdo_run is a tag by name, so %{outputDir} is
+        the output tree's root. The core tags %{timestamp}, %{date},
+        %{hostname}, %{platform}, %{user} and %{pid} are available too.
 
-    SYNOPSIS
+        Functions derive one name from another:
 
-        pfdo_run """ + package_CLIfull + """
+            %{inputWorkingFile|rmext}             brain.nii.gz -> brain.nii
+            %{inputWorkingFile|rmext|rmext}.jpg   brain.nii.gz -> brain.jpg
+            %{inputWorkingFile|replace(.,-)}      a.b.c -> a-b-c
+            %{inputWorkingFile|re([0-9]+,N)}      im001.dcm -> imN.dcm
+            %{inputWorkingDir|basename}           the directory's own name
+            %{inputWorkingFile|sha256(8)}         a stable hash of the name
 
-    BRIEF EXAMPLE
+        Nothing outside %{...} is a tag, so a literal % in the command is
+        fine. A tag that does not resolve fails that job before it runs;
+        the job's record says why.
+"""
 
-        pfdo_run                                                \\
-            --inputDir /var/www/html/data --fileFilter jpg      \\
-            --outputDir /var/www/html/png                       \\
-            --exec "convert %inputWorkingDir/%inputWorkingFile
-            %outputWorkingDir/%_rmext_inputWorkingFile.png"     \\
-            --threads 0 --printElapsedTime
-    """
-
-    description =  '''
-    DESCRIPTION
-
-        ``pfdo_run`` runs some user specified CLI at each path/file location
-        in an input directory, storing results (and logs) at a corresponding
-        dir location rooted in the output directory.
-
-    ARGS ''' +  package_argsSynopsisFull     +\
-                package_CLItagHelp          +\
-                package_specialFunctionHelp + '''
+EXAMPLES: str = """
 
     EXAMPLES
 
-    Perform a `pfdo_run` down some input directory and convert all input
-    ``jpg`` files to ``png`` in the output tree:
+    Convert every jpg in a tree to png in a parallel tree:
 
-        pfdo_run                                                \\
-            --inputDir /var/www/html/data --fileFilter jpg      \\
-            --outputDir /var/www/html/png                       \\
-            --exec "convert %inputWorkingDir/%inputWorkingFile
-            %outputWorkingDir/%_rmext_inputWorkingFile.png"     \\
-            --threads 0 --printElapsedTime
+        pfdo_run                                                                \\
+            --inputDir /var/www/html/data --fileFilter 'glob:*.jpg'             \\
+            --outputDir /var/www/html/png                                       \\
+            --exec "convert %{inputWorkingDir}/%{inputWorkingFile}
+                            %{outputWorkingDir}/%{inputWorkingFile|rmext}.png"  \\
+            --threads 4 --printElapsedTime
 
-    The above will find all files in the tree structure rooted at
-    /var/www/html/data that also contain the string "jpg" anywhere
-    in the filename. For each file found, a `convert` conversion
-    will be called, storing a converted file in the same tree location
-    in the output directory as the original input.
+    Each conversion's command, stdout, stderr and return code are written
+    beside the png as <file>-cmd, <file>-stdout, <file>-stderr and
+    <file>-returncode. Add --verbosity 2 to watch the conversions as they run.
 
-    Note the special construct, %_rmext_inputWorkingFile.png -- the
-    %_<func>_ designates a built in funtion to apply to the
-    tag value. In this case, to "remove the extension" from the
-    %inputWorkingFile string.
+    Run one command per DICOM series, started on the first file:
 
-    Consider an example where only one file in a branched inputdir
-    space is to be preserved:
+        pfdo_run                                                                \\
+            --inputDir /data --outputDir /out                                   \\
+            --fileFilter 'glob:*.dcm' --analyzeFileIndex f                      \\
+            --exec "mri_convert %{inputWorkingDir}/%{inputWorkingFile}
+                                %{outputWorkingDir}/%{inputWorkingDir|basename}.nii.gz"
 
-        pfdo_run                                                \\
-            --inputDir (pwd)/raw --outputDir (pwd)/out          \\
-            --dirFilter 100307                                  \\
-            --exec "cp %inputWorkingDir/brain.mgz
-            %outputWorkingDir/brain.mgz"                        \\
-            --threads 0 --verbosity 3 --noJobLogging
+    Copy one file out of each directory whose path names a subject:
 
-    Here, the input directory space is pruned for a directory leaf
-    node that contains the string 100307. The exec command essentially
-    copies the file `brain.mgz` in that target directory to the
-    corresponding location in the output tree.
+        pfdo_run                                                                \\
+            --inputDir $PWD/raw --outputDir $PWD/out                            \\
+            --dirFilter 100307                                                  \\
+            --exec "cp %{inputWorkingDir}/brain.mgz %{outputWorkingDir}/brain.mgz" \\
+            --analyzeFileIndex f --noJobLogging --json
 
-    Finally the elapsed time and a JSON output are printed.
+"""
 
-    '''
+CLI_FULL: str = CLI_IO_CORE + CLI_SELF + PFDO_CLI_SELF + CLI_CORE
+ARGS_SYNOPSIS_FULL: str = ARGS_SYNOPSIS_IO + ARGS_SYNOPSIS_SELF + PFDO_ARGS_SYNOPSIS_SELF + ARGS_SYNOPSIS_CORE
+CLI_DS: str = CLI_DS_IO + CLI_SELF + PFDO_CLI_SELF + CLI_CORE
+ARGS_SYNOPSIS_DS: str = ARGS_SYNOPSIS_DS + ARGS_SYNOPSIS_SELF + PFDO_ARGS_SYNOPSIS_SELF + ARGS_SYNOPSIS_CORE
 
-    if ab_shortOnly:
-        return shortSynopsis
-    else:
-        return shortSynopsis + description
+DESCRIPTION: str = """
+    DESCRIPTION
+
+        ``pfdo_run`` walks the input tree with pftree, selects files in each
+        directory with the pfdo filters and --analyzeFileIndex, and runs the
+        --exec command once per selected file, with the command's tags
+        resolved against that directory and file. The output tree mirrors
+        the input tree; each directory's results and job logs land in its
+        counterpart. Directories run in parallel under --threads.
+"""
 
 
-parserSelf  = ArgumentParser(description        = 'Self specific',
-                             formatter_class    = RawTextHelpFormatter,
-                             add_help           = False)
+def synopsis(shortOnly: bool = False, command: str = "pfdo_run") -> str:
+    """Assemble the manual text.
 
-parserSelf.add_argument("--exec",
-                    help    = "command line execution string to perform",
-                    dest    = 'exec',
-                    default = '')
+    Args:
+        shortOnly: NAME, SYNOPSIS and a brief example only.
+        command: the command name shown, for a package built on pfdo_run.
 
-parserSA  = ArgumentParser( description        = str_desc,
-                            formatter_class    = RawTextHelpFormatter,
-                            parents            = [pfdo_parser, parserSelf],
-                            add_help           = False)
-
-parserDS  = ArgumentParser( description        = str_desc,
-                            formatter_class    = RawTextHelpFormatter,
-                            parents            = [DSpfdo_parser, parserSelf],
-                            add_help           = False)
-
-def earlyExit_check(args) -> int:
-    """Perform some preliminary checks
+    Returns:
+        The manual text, without the banner.
     """
-    if args.man or args.synopsis:
-        print(str_desc)
-        if args.man:
-            str_help     = synopsis(False)
-        else:
-            str_help     = synopsis(True)
-        print(str_help)
-        return 1
-    if args.b_version:
-        print("Name:    %s\nVersion: %s" % (__pkg.name, __version__))
-        return 1
-    return 0
+    shortSynopsis: str = (
+        f"""
+    NAME
 
-def main(args = None):
+        {command}
 
-    if not args:
-        args                = parserSA.parse_args()
-    d_pfdicom_tagExtract    : dict  = {}
-    if earlyExit_check(args): return 1
+    SYNOPSIS
 
-    args.str_version    = __version__
-    args.str_desc       = synopsis(True)
+        {command} \\"""
+        + CLI_FULL
+        + f"""
 
-    pf_do_shell         = pfdo_run.pfdo_run(vars(args))
+    BRIEF EXAMPLE
 
-    # And now run it!
-    d_pfdo_shell        = pf_do_shell.run(timerStart = True)
+        {command}                                                                \\
+            --inputDir /var/www/html/data --fileFilter jpg                      \\
+            --outputDir /var/www/html/png                                       \\
+            --exec "convert %{{inputWorkingDir}}/%{{inputWorkingFile}}
+                            %{{outputWorkingDir}}/%{{inputWorkingFile|rmext}}.png"  \\
+            --threads 4 --printElapsedTime
+    """
+    )
+    if shortOnly:
+        return shortSynopsis
+    return shortSynopsis + DESCRIPTION + "\n    ARGS " + ARGS_SYNOPSIS_FULL + TAG_HELP + EXAMPLES
 
+
+def manual_build() -> Manual:
+    """The pfdo_run manual page."""
+    return Manual(
+        command="pfdo_run",
+        art=BANNER_ART,
+        title=BANNER_TITLE,
+        text=BANNER_TEXT,
+        version=__version__,
+        synopsisShort=synopsis(shortOnly=True),
+        synopsisFull=synopsis(shortOnly=False),
+    )
+
+
+def parserSelf_build() -> argparse.ArgumentParser:
+    """pfdo_run's own options.
+
+    Returns:
+        A parent parser with ``--exec`` and ``--noJobLogging``.
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--exec", dest="exec", default="", help="the command template to run per file (required)"
+    )
+    parser.add_argument(
+        "--noJobLogging",
+        dest="noJobLogging",
+        action="store_true",
+        help="do not write per-job cmd/stdout/stderr/rc",
+    )
+    return parser
+
+
+def parser_build(standalone: bool = True) -> argparse.ArgumentParser:
+    """Assemble the full parser.
+
+    Args:
+        standalone: include ``--inputDir`` / ``--outputDir``. A ChRIS DS plugin
+            passes False and adds its own positional directories.
+
+    Returns:
+        The parser.
+    """
+    parents: list[argparse.ArgumentParser] = [
+        parserCore_build("pfdo_run", __version__),
+        pfdoParserSelf_build(),
+        parserSelf_build(),
+    ]
+    if standalone:
+        parents.insert(0, parserIO_build())
+    return argparse.ArgumentParser(
+        prog="pfdo_run",
+        description="Run a command in every directory of a tree. Full manual: pfdo_run --man",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=parents,
+    )
+
+
+def options_fromArgs(args: argparse.Namespace) -> PfdoRunOptions:
+    """Turn parsed arguments into options."""
+    return PfdoRunOptions.fromDict(vars(args))
+
+
+def result_report(args: argparse.Namespace, result: RunResult) -> None:
+    """Print what the arguments asked for."""
+    if args.json:
+        print(json.dumps(result.toDict(), indent=4, sort_keys=True))
     if args.printElapsedTime:
-        pf_do_shell.dp.qprint(
-                "Elapsed time = %f seconds" %
-                d_pfdo_shell['runTime']
-        )
+        print(f"Elapsed time = {result.runTime:.6f} seconds")
 
-    return 0
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command.
+
+    Args:
+        argv: arguments without the program name; ``None`` reads ``sys.argv``.
+
+    Returns:
+        0 when at least one directory's jobs all succeeded (pftree's stage rule);
+        1 when the run failed everywhere or could not start; 2 on bad arguments.
+    """
+    parser: argparse.ArgumentParser = parser_build()
+    args: argparse.Namespace = parser.parse_args(argv)
+    if args.man or args.synopsis:
+        manual_print(manual_build(), shortOnly=not args.man)
+        return 0
+    if not args.inputDir:
+        parser.error("--inputDir is required")
+    if not args.exec:
+        parser.error("--exec is required")
+    try:
+        options: PfdoRunOptions = options_fromArgs(args)
+    except ValueError as err:
+        parser.error(str(err))
+    logging_configure(options.verbosity)
+    result: RunResult = PfdoRun(options).run()
+    result_report(args, result)
+    if result.error:
+        print(result.error, file=sys.stderr)
+    return 0 if result.status else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())
