@@ -41,10 +41,9 @@ from pftree.__main__ import (
     parserIO_build,
 )
 from pftree.manual import Manual, manual_print
-from pftree.models import RunResult
 
 from pfdo_run import __version__
-from pfdo_run.models import PfdoRunOptions
+from pfdo_run.models import PfdoRunOptions, RunResult
 from pfdo_run.pfdo_run import PfdoRun
 
 BANNER_ART: str = r"""
@@ -97,15 +96,22 @@ ARGS_SYNOPSIS_SELF: str = """
         as pipes and redirection are not available.
 
         [--noJobLogging]
-        If specified, suppress the logging of per-job output. Usually each
-        job that is run leaves, in the output directory, four files:
+        If specified, suppress the per-job record. Usually each job that is
+        run leaves, in the output directory, four files:
 
                 <inputWorkingFile>-cmd
                 <inputWorkingFile>-stdout
                 <inputWorkingFile>-stderr
                 <inputWorkingFile>-returncode
 
-        By specifying this option, the above files are not recorded.
+        The stream files are written as the command runs and, when it ends,
+        rendered as a terminal would have shown them: a progress bar redrawn
+        a hundred times is one line. By specifying this option, the above
+        files are not recorded.
+
+        At --verbosity 2 and above each command's output is also streamed to
+        the console while it runs, so a long job can be watched. Under
+        --threads the streams of concurrent jobs interleave.
 """
 
 TAG_HELP: str = """
@@ -153,7 +159,7 @@ EXAMPLES: str = """
 
     Each conversion's command, stdout, stderr and return code are written
     beside the png as <file>-cmd, <file>-stdout, <file>-stderr and
-    <file>-returncode.
+    <file>-returncode. Add --verbosity 2 to watch the conversions as they run.
 
     Run one command per DICOM series, started on the first file:
 

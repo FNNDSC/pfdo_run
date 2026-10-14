@@ -1,16 +1,17 @@
 """pfdo_run: run a command in every directory of a tree.
 
-``PfdoRun`` is the member of the pfdo family whose per-directory operation is a shell
-command written by the user as a pftag template. For every file the directory's
+``PfdoRun`` is the member of the pfdo family whose per-directory operation is a command
+written by the user as a pftag template. For every file the directory's
 ``--analyzeFileIndex`` selects, the template is split like a shell command, each
 argument has its tags resolved against that directory's paths and the file, and the
-result is run without a shell. The process's output and exit status are kept beside
-its results in the output tree.
+result is run through hostlib: without a shell, both streams read as they arrive, the
+record kept beside the results and, at ``--verbosity 2`` and above, streamed to the
+console while the command runs.
 
 Key components:
     - PfdoRun: the engine; ``job_run`` builds and runs one command
     - lookups_forJob: the tags a job can use
-    - JOB_LOG_SUFFIXES: the files written per job
+    - sink_build: where a job's output goes while it runs
 
 Typical usage:
     PfdoRun(PfdoRunOptions(inputDir=Path("/in"), outputDir=Path("/out"),
@@ -18,7 +19,7 @@ Typical usage:
                  "%{outputWorkingDir}/%{inputWorkingFile|rmext}.jpg")).run()
 
 Dependencies:
-    - pfdo, pftag
+    - pfdo, pftag, hostlib
 """
 
 from __future__ import annotations
@@ -26,21 +27,20 @@ from __future__ import annotations
 import dataclasses
 import logging
 import shlex
-import subprocess
-from pathlib import Path
 
+from hostlib.proc.run import job_run as host_jobRun
+from hostlib.sink import ConsoleSink, FileSink, JobSink, NullSink, TeeSink
 from pfdo.pfdo import Pfdo
 from pftag.models import ArgvResult, TagOptions
 from pftag.pftag import Pftag
-from pftree.models import DirNode, ProcessResult, StageResult
 
-from pfdo_run.models import JobResult, PfdoRunOptions
+from pfdo_run.models import DirNode, FileJob, JobResult, JobSpec, PfdoRunOptions, StageResult
 
 logger: logging.Logger = logging.getLogger("pfdo_run")
 
 OPTIONS_LOOKUP: str = "options"
 JOB_LOOKUP: str = "pfdo"
-JOB_LOG_SUFFIXES: tuple[str, ...] = ("cmd", "stdout", "stderr", "returncode")
+STREAM_VERBOSITY: int = 2
 
 
 def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dict[str, dict[str, str]]:
@@ -67,6 +67,29 @@ def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dic
     return {OPTIONS_LOOKUP: optionTags, JOB_LOOKUP: jobTags}
 
 
+def sink_build(options: PfdoRunOptions, node: DirNode, fileName: str) -> JobSink:
+    """Where one job's output goes while it runs.
+
+    Args:
+        options: ``noJobLogging`` turns the file record off; ``verbosity`` of
+            ``STREAM_VERBOSITY`` or more streams to the console.
+        node: the directory; the record lands in its ``outputPath``.
+        fileName: the file; the record is ``<file>-cmd``, ``-stdout``, ``-stderr``,
+            ``-returncode``, the stream files rendered as a terminal would show them.
+
+    Returns:
+        A file sink, a console sink, both, or nothing.
+    """
+    sinks: list[JobSink] = []
+    if not options.noJobLogging:
+        sinks.append(FileSink(node.outputPath / fileName, rendered=True))
+    if options.verbosity >= STREAM_VERBOSITY:
+        sinks.append(ConsoleSink())
+    if not sinks:
+        return NullSink()
+    return sinks[0] if len(sinks) == 1 else TeeSink(*sinks)
+
+
 class PfdoRun(Pfdo):
     """Run a command template in every directory of the input tree.
 
@@ -79,8 +102,6 @@ class PfdoRun(Pfdo):
         >>> tool.argvTemplate
         ['true']
     """
-
-    processAlways: bool = True
 
     def __init__(self, options: PfdoRunOptions) -> None:
         super().__init__(options)
@@ -107,80 +128,41 @@ class PfdoRun(Pfdo):
             read: the read stage's result.
 
         Returns:
-            The files run, with every JobResult in ``payload["jobs"]``; ``status`` is
-            True only when every job was built and exited 0.
+            The files run, with every FileJob in ``payload["jobs"]``; ``status`` is
+            True only when every job was built, started and exited 0.
         """
-        jobs: list[JobResult] = [self.job_run(node, fileName) for fileName in self.filesToAnalyze(node)]
-        for job in jobs:
-            if not self.options.noJobLogging:
-                self.job_log(node, job)
+        jobs: list[FileJob] = [self.job_run(node, fileName) for fileName in self.filesToAnalyze(node)]
         return StageResult(
             status=bool(jobs) and all(job.status for job in jobs),
             files=[job.file for job in jobs],
             payload={"jobs": [dataclasses.asdict(job) for job in jobs]},
         )
 
-    def job_run(self, node: DirNode, fileName: str) -> JobResult:
+    def job_run(self, node: DirNode, fileName: str) -> FileJob:
         """Build and run the command for one file.
 
         The template's tags are resolved per argument, so a path with a space stays
-        one argument; the command runs without a shell, with both output streams
-        captured to completion.
+        one argument; the command then runs through hostlib, without a shell, its
+        output going to the sink ``sink_build`` chooses while it runs.
 
         Args:
             node: the directory.
             fileName: the file the command is built for.
 
         Returns:
-            The job's record. A template that fails to resolve, or a command that
-            cannot be started, is a failed job that was never run.
+            The job's record. A template that fails to resolve is a job that was
+            never run; a program that cannot start or exits non-zero is a failed run.
         """
         if not self.argvTemplate:
-            return JobResult(fileName, [], None, "", "", False, ["--exec is empty"])
+            return FileJob(fileName, [], False, ["--exec is empty"])
         tagger: Pftag = Pftag(TagOptions(lookups=lookups_forJob(self.options, node, fileName), strict=True))
         resolved: ArgvResult = tagger.argv_process(self.argvTemplate)
         if not resolved.status:
             logger.error("%s/%s: %s", node.relPath, fileName, "; ".join(resolved.errors()))
-            return JobResult(fileName, resolved.argv, None, "", "", False, resolved.errors())
+            return FileJob(fileName, resolved.argv, False, resolved.errors())
         logger.debug("%s/%s: %s", node.relPath, fileName, shlex.join(resolved.argv))
-        try:
-            completed: subprocess.CompletedProcess[str] = subprocess.run(
-                resolved.argv, capture_output=True, text=True, check=False
-            )
-        except OSError as err:
-            logger.error("%s/%s: cannot run %s: %s", node.relPath, fileName, resolved.argv[0], err.strerror)
-            return JobResult(
-                fileName, resolved.argv, None, "", "", False, [f"cannot run {resolved.argv[0]}: {err}"]
-            )
-        status: bool = completed.returncode == 0
-        errors: list[str] = [] if status else [f"exit status {completed.returncode}"]
-        if not status:
-            logger.warning("%s/%s: exit status %d", node.relPath, fileName, completed.returncode)
-        return JobResult(
-            fileName, resolved.argv, completed.returncode, completed.stdout, completed.stderr, status, errors
-        )
-
-    def job_log(self, node: DirNode, job: JobResult) -> None:
-        """Write a job's command, stdout, stderr and return code beside its results.
-
-        Args:
-            node: the directory; files go under its ``outputPath``.
-            job: the job.
-        """
-        node.outputPath.mkdir(parents=True, exist_ok=True)
-        contents: dict[str, str] = {
-            "cmd": shlex.join(job.argv) + "\n",
-            "stdout": job.stdout,
-            "stderr": job.stderr,
-            "returncode": f"{job.returncode}\n",
-        }
-        for suffix in JOB_LOG_SUFFIXES:
-            target: Path = node.outputPath / f"{job.file}-{suffix}"
-            target.write_text(contents[suffix])
-
-    def callbacks_run(self) -> ProcessResult:
-        """Run the read and analyze stages; pfdo_run has no write stage of its own."""
-        return self.tree_process(
-            inputRead_callback=self.inputRead_callback,
-            inputAnalyze_callback=self.inputAnalyze_callback,
-        )
+        sink: JobSink = sink_build(self.options, node, fileName)
+        run: JobResult = host_jobRun(JobSpec(argv=resolved.argv), sink=sink)
+        if not run.status:
+            logger.warning("%s/%s: %s", node.relPath, fileName, "; ".join(run.errors))
+        return FileJob(fileName, resolved.argv, run.status, list(run.errors), run)

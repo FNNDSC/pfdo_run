@@ -40,7 +40,7 @@ def test_main_runsAndPrintsJson(tmp_path: Path, capsys: pytest.CaptureFixture[st
     out: str = capsys.readouterr().out
     payload = json.loads(out[: out.rindex("}") + 1])
     assert payload["status"] is True
-    assert payload["process"]["analyze"]["s"]["payload"]["jobs"][0]["returncode"] == 0
+    assert payload["process"]["analyze"]["s"]["payload"]["jobs"][0]["run"]["returncode"] == 0
     assert (outputDir / "s/x.png").exists()
     assert "Elapsed time" in out
 

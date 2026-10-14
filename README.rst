@@ -49,7 +49,7 @@ All of ``pftree``'s and ``pfdo``'s options apply. ``pfdo_run`` adds:
     The command to run per selected file. Tags: ``%{inputWorkingDir}``, ``%{outputWorkingDir}``, ``%{inputWorkingFile}``, every option by name (``%{outputDir}``), and pftag's core tags. Functions: ``rmext``, ``ext``, ``basename``, ``dirname``, ``replace``, ``re``, ``upper``, ``lower``, ``strip``, ``pad``, ``slice``, ``md5``, ``sha256``, ``strftime``, ``mask``. A tag that does not resolve fails that job before it runs.
 
 ``--noJobLogging``
-    Do not write ``<file>-cmd``, ``<file>-stdout``, ``<file>-stderr`` and ``<file>-returncode`` beside each job's results.
+    Do not write ``<file>-cmd``, ``<file>-stdout``, ``<file>-stderr`` and ``<file>-returncode`` beside each job's results. The stream files are written live and rendered as a terminal would show them when the job ends.
 
 A job whose command exits non-zero fails its directory; the run continues and the directory's record says why. ``--json`` prints the whole result, each directory's jobs included.
 
@@ -68,7 +68,7 @@ Library
     result = PfdoRun(options).run()
     for key, stage in result.process.analyze.items():
         for job in stage.payload["jobs"]:
-            print(key, job["file"], job["returncode"])
+            print(key, job["file"], job["run"]["returncode"] if job["run"] else job["errors"])
 
 ``pfdo_run.__main__`` exposes its parser and manual in parts (``parser_build(standalone=False)``, ``synopsis(command=...)``, ``CLI_DS``, ``ARGS_SYNOPSIS_DS``) so that a ChRIS plugin such as ``pl-shexec`` composes its own command around them.
 
@@ -78,7 +78,8 @@ Changes in 4.0
 - Built on ``pfdo`` 6 and ``pftag`` 3; ``pfmisc``, ``pudb`` and ``Faker`` are no longer dependencies.
 - The template grammar is pftag's: ``%{name}`` and ``%{name|fn(arg)}``. The 3.x forms ``%name`` and ``%_fn_name`` are gone; a bare ``%name`` of a known tag is reported as a 1.x template and fails the job.
 - The command is split before substitution and run without a shell; 3.x substituted into the string and split on whitespace, so a path with a space broke it.
-- Both output streams are captured to completion; 3.x read stdout line by line, dropped the last line, and could deadlock on stderr.
-- Per-job logs are written by default and ``--noJobLogging`` exists; in 3.x the option was documented but undefined, so logs were never written.
+- The command runs through ``hostlib``: no shell, both streams read concurrently as they arrive, so nothing is dropped and nothing can deadlock; 3.x read stdout line by line, lost the last line, and could deadlock on stderr. At ``--verbosity 2`` and above the output also streams to the console while the job runs.
+- Per-job records are written by default and ``--noJobLogging`` exists; in 3.x the option was documented but undefined, so logs were never written. The stream files are rendered as a terminal would have shown them, so a redrawn progress bar is one line; the record in ``--json`` keeps every frame.
+- Each job's record is ``FileJob``: the file, the command as built, status, errors, and ``run``, hostlib's envelope of the run (both streams, exit status, host facts, timing) when the command ran.
 - A non-zero exit status fails the job and its directory; the run's status is truthful (3.x reported False always).
 - ``main(argv)`` honours ``argv``; ``--version``, ``--man`` and ``--synopsis`` exit 0; packaging is ``pyproject.toml`` only, published from CI on a ``v*`` tag.

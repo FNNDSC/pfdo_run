@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pfdo_run.models import JobResult, PfdoRunOptions
-from pfdo_run.pfdo_run import JOB_LOG_SUFFIXES, PfdoRun, lookups_forJob
+from hostlib.sink import LOG_SUFFIXES
+
+from pfdo_run.models import FileJob, PfdoRunOptions
+from pfdo_run.pfdo_run import PfdoRun, lookups_forJob, sink_build
 
 
 def tree_make(root: Path) -> tuple[Path, Path]:
@@ -48,7 +50,7 @@ def test_copy_everyFile_withLogs(tmp_path: Path) -> None:
     assert (outputDir / "sub-01/anat/a.nii.copy").read_text() == "sub-01/anat/a.nii.gz\n"
     assert (outputDir / "sub-02/anat/my file.nii.copy").read_text() == "spaced\n"
     assert not (outputDir / "notes").exists()
-    for suffix in JOB_LOG_SUFFIXES:
+    for suffix in LOG_SUFFIXES:
         assert (outputDir / f"sub-01/anat/a.nii.gz-{suffix}").exists()
     assert (outputDir / "sub-01/anat/a.nii.gz-returncode").read_text() == "0\n"
     assert "a.nii.copy" in (outputDir / "sub-01/anat/a.nii.gz-cmd").read_text()
@@ -77,7 +79,8 @@ def test_stdout_capturedAndLogged(tmp_path: Path) -> None:
     assert (outputDir / "notes/r.txt-stdout").read_text() == "hello r.txt\n"
     assert result.process is not None
     jobs = result.process.analyze["notes"].payload["jobs"]
-    assert jobs[0]["stdout"] == "hello r.txt\n" and jobs[0]["returncode"] == 0
+    assert jobs[0]["run"]["stdout"] == "hello r.txt\n" and jobs[0]["run"]["returncode"] == 0
+    assert jobs[0]["run"]["host"]["hostname"] and jobs[0]["run"]["duration"] >= 0
 
 
 def test_failingCommand_failsDirectoryRunContinues(tmp_path: Path) -> None:
@@ -100,7 +103,7 @@ def test_unresolvedTag_jobNotRun(tmp_path: Path) -> None:
     assert not result.status
     assert result.process is not None
     job = result.process.analyze["notes"].payload["jobs"][0]
-    assert job["returncode"] is None and job["status"] is False
+    assert job["run"] is None and job["status"] is False
     assert "unknown tag" in job["errors"][0]
     assert not list((outputDir / "notes").glob("%{nope}"))
 
@@ -120,7 +123,7 @@ def test_missingProgram_isAFailedJob(tmp_path: Path) -> None:
     ).run()
     assert not result.status
     job = result.process.analyze["notes"].payload["jobs"][0]  # type: ignore[union-attr]
-    assert job["returncode"] is None and "cannot run" in job["errors"][0]
+    assert job["run"]["returncode"] is None and "cannot run" in job["errors"][0]
 
 
 def test_optionsAreTags(tmp_path: Path) -> None:
@@ -170,4 +173,55 @@ def test_jobResult_isJsonReady(tmp_path: Path) -> None:
     inputDir, outputDir = tree_make(tmp_path)
     result = PfdoRun(options_make(inputDir, outputDir, "true", dirFilter="notes")).run()
     json.dumps(result.toDict())
-    assert JobResult("f", ["true"], 0, "", "", True).status
+    assert FileJob("f", ["true"], True).run is None
+
+
+def test_verbosity2_streamsWhileRunning(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    inputDir, outputDir = tree_make(tmp_path)
+    exec_: str = "sh -c 'echo live %{inputWorkingFile}; echo warn >&2'"
+    quiet = PfdoRun(options_make(inputDir, outputDir, exec_, dirFilter="notes", verbosity=1)).run()
+    assert quiet.status and capsys.readouterr().out == ""
+    loud = PfdoRun(options_make(inputDir, outputDir, exec_, dirFilter="notes", verbosity=2)).run()
+    assert loud.status
+    captured = capsys.readouterr()
+    assert captured.out == "live r.txt\n" and "warn\n" in captured.err
+
+
+def test_logs_renderedAsTerminalWouldShow(tmp_path: Path) -> None:
+    inputDir, outputDir = tree_make(tmp_path)
+    exec_: str = "sh -c 'printf \"10%%\\r50%%\\r100%% done\\n\"'"
+    result = PfdoRun(options_make(inputDir, outputDir, exec_, dirFilter="notes")).run()
+    assert result.status
+    assert (outputDir / "notes/r.txt-stdout").read_bytes() == b"100% done\n"
+    job = result.process.analyze["notes"].payload["jobs"][0]  # type: ignore[union-attr]
+    assert job["run"]["stdout"] == "10%\r50%\r100% done\n"
+
+
+def test_sink_build_choices(tmp_path: Path) -> None:
+    from hostlib.sink import ConsoleSink, FileSink, NullSink, TeeSink
+
+    from pfdo_run.models import DirNode
+
+    inputDir, outputDir = tree_make(tmp_path)
+    node = DirNode(path=inputDir / "notes", relPath="notes", outputPath=outputDir / "notes", files=["r.txt"])
+    assert isinstance(sink_build(options_make(inputDir, outputDir, "true"), node, "r.txt"), FileSink)
+    assert isinstance(
+        sink_build(options_make(inputDir, outputDir, "true", noJobLogging=True), node, "r.txt"), NullSink
+    )
+    assert isinstance(
+        sink_build(options_make(inputDir, outputDir, "true", noJobLogging=True, verbosity=2), node, "r.txt"),
+        ConsoleSink,
+    )
+    assert isinstance(
+        sink_build(options_make(inputDir, outputDir, "true", verbosity=3), node, "r.txt"), TeeSink
+    )
+
+
+def test_models_reexport() -> None:
+    import hostlib.models
+    import pfdo.models
+
+    from pfdo_run import models
+
+    assert models.DirNode is pfdo.models.DirNode and models.StageResult is pfdo.models.StageResult
+    assert models.JobResult is hostlib.models.JobResult and models.JobSpec is hostlib.models.JobSpec

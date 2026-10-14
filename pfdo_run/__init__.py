@@ -7,7 +7,7 @@ writes as a pftag template. ``%{inputWorkingDir}``, ``%{outputWorkingDir}`` and
 
 Key components:
     - PfdoRun: the engine
-    - PfdoRunOptions, JobResult: options in, job records out
+    - PfdoRunOptions, FileJob: options in, job records out
     - __main__: the ``pfdo_run`` command and the parts pl-shexec composes its own from
 
 Typical usage:
@@ -15,21 +15,25 @@ Typical usage:
         --exec "mri_convert %{inputWorkingDir}/%{inputWorkingFile} %{outputWorkingDir}/T1.nii.gz"
 
 Dependencies:
-    - pfdo, pftag
+    - pfdo, pftag, hostlib
 """
 
 from __future__ import annotations
 
 __version__: str = "4.0.0"
 
-from pfdo_run.models import JobResult, PfdoRunOptions
-from pfdo_run.pfdo_run import JOB_LOG_SUFFIXES, PfdoRun, lookups_forJob
+from pfdo_run.models import DirNode, FileJob, JobResult, PfdoRunOptions, RunResult, StageResult
+from pfdo_run.pfdo_run import PfdoRun, lookups_forJob, sink_build
 
 __all__ = [
-    "JOB_LOG_SUFFIXES",
+    "DirNode",
+    "FileJob",
     "JobResult",
     "PfdoRun",
     "PfdoRunOptions",
+    "RunResult",
+    "StageResult",
     "__version__",
     "lookups_forJob",
+    "sink_build",
 ]
