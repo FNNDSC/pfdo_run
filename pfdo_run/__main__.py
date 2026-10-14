@@ -164,7 +164,7 @@ EXAMPLES: str = """
             --threads 4 --printElapsedTime
 
     Each conversion's command, stdout, stderr, return code and timing are one
-    line in the directory's jobs.jsonl; `pflog read /var/www/html/png/**/jobs.jsonl`
+    line in the directory's jobs.jsonl; ``pflog read /var/www/html/png/**/jobs.jsonl``
     lists them. Add --verbosity 2 to watch the conversions as they run.
 
     Run one command per DICOM series, started on the first file:
