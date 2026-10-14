@@ -84,7 +84,7 @@ BANNER_TEXT: str = """
 
 CLI_SELF: str = """
         --exec <commandTemplate>                                                \\
-        [--noJobLogging]                                                        \\"""
+        [--noJobLogging] [--jobFiles]                                            \\"""
 
 ARGS_SYNOPSIS_SELF: str = """
         --exec <commandTemplate>
@@ -96,8 +96,14 @@ ARGS_SYNOPSIS_SELF: str = """
         as pipes and redirection are not available.
 
         [--noJobLogging]
-        If specified, suppress the per-job record. Usually each job that is
-        run leaves, in the output directory, four files:
+        Keep no record of the jobs in the output tree. Usually each job that
+        runs appends one line to jobs.jsonl in its output directory: the
+        command, its stdout and stderr complete, its return code, the host,
+        and when it started and ended, as JSON. ``pflog read`` prints such
+        files as a table; a log collector indexes them by field.
+
+        [--jobFiles]
+        Also write each job as four files beside its results:
 
                 <inputWorkingFile>-cmd
                 <inputWorkingFile>-stdout
@@ -106,8 +112,8 @@ ARGS_SYNOPSIS_SELF: str = """
 
         The stream files are written as the command runs and, when it ends,
         rendered as a terminal would have shown them: a progress bar redrawn
-        a hundred times is one line. By specifying this option, the above
-        files are not recorded.
+        a hundred times is one line. For the case where someone will open a
+        job's output in an editor; the JSON line already holds all four.
 
         At --verbosity 2 and above each command's output is also streamed to
         the console while it runs, so a long job can be watched. Under
@@ -157,9 +163,9 @@ EXAMPLES: str = """
                             %{outputWorkingDir}/%{inputWorkingFile|rmext}.png"  \\
             --threads 4 --printElapsedTime
 
-    Each conversion's command, stdout, stderr and return code are written
-    beside the png as <file>-cmd, <file>-stdout, <file>-stderr and
-    <file>-returncode. Add --verbosity 2 to watch the conversions as they run.
+    Each conversion's command, stdout, stderr, return code and timing are one
+    line in the directory's jobs.jsonl; `pflog read /var/www/html/png/**/jobs.jsonl`
+    lists them. Add --verbosity 2 to watch the conversions as they run.
 
     Run one command per DICOM series, started on the first file:
 
@@ -250,7 +256,7 @@ def parserSelf_build() -> argparse.ArgumentParser:
     """pfdo_run's own options.
 
     Returns:
-        A parent parser with ``--exec`` and ``--noJobLogging``.
+        A parent parser with ``--exec``, ``--noJobLogging`` and ``--jobFiles``.
     """
     parser: argparse.ArgumentParser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
@@ -267,7 +273,13 @@ def parserSelf_build() -> argparse.ArgumentParser:
         "--noJobLogging",
         dest="noJobLogging",
         action="store_true",
-        help="do not write per-job cmd/stdout/stderr/rc",
+        help="keep no record of the jobs; the default is one JSON line per job in jobs.jsonl",
+    )
+    parser.add_argument(
+        "--jobFiles",
+        dest="jobFiles",
+        action="store_true",
+        help="also write each job as <file>-cmd, -stdout, -stderr, -returncode beside its result",
     )
     return parser
 

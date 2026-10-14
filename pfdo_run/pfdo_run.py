@@ -29,7 +29,7 @@ import logging
 import shlex
 
 from hostlib.proc.run import job_run as host_jobRun
-from hostlib.sink import ConsoleSink, FileSink, JobSink, NullSink, TeeSink
+from hostlib.sink import JOBS_FILE, ConsoleSink, FileSink, JobSink, JsonSink, NullSink, TeeSink
 from pfdo.pfdo import Pfdo
 from pftag.models import ArgvResult, TagOptions
 from pftag.pftag import Pftag
@@ -72,18 +72,22 @@ def sink_build(options: PfdoRunOptions, node: DirNode, fileName: str) -> JobSink
     """Where one job's output goes while it runs.
 
     Args:
-        options: ``noJobLogging`` turns the file record off; ``verbosity`` of
-            ``STREAM_VERBOSITY`` or more streams to the console.
+        options: ``noJobLogging`` keeps no record; ``jobFiles`` adds the four files
+            beside the result; ``verbosity`` of ``STREAM_VERBOSITY`` or more streams
+            to the console.
         node: the directory; the record lands in its ``outputPath``.
-        fileName: the file; the record is ``<file>-cmd``, ``-stdout``, ``-stderr``,
-            ``-returncode``, the stream files rendered as a terminal would show them.
+        fileName: the file; its job is one line in ``<outputPath>/jobs.jsonl`` and,
+            with ``jobFiles``, ``<file>-cmd``, ``-stdout``, ``-stderr``, ``-returncode``,
+            the stream files rendered as a terminal would show them.
 
     Returns:
-        A file sink, a console sink, both, or nothing.
+        A JSON-line sink, with a file sink and a console sink as asked, or nothing.
     """
     sinks: list[JobSink] = []
     if not options.noJobLogging:
-        sinks.append(FileSink(node.outputPath / fileName, rendered=True))
+        sinks.append(JsonSink(node.outputPath / JOBS_FILE))
+        if options.jobFiles:
+            sinks.append(FileSink(node.outputPath / fileName, rendered=True))
     if options.verbosity >= STREAM_VERBOSITY:
         sinks.append(ConsoleSink())
     if not sinks:
