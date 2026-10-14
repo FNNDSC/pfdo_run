@@ -90,8 +90,9 @@ def test_parser_build_dsOmitsIoArguments() -> None:
     dsStyle = parser_build(standalone=False)
     with pytest.raises(SystemExit):
         dsStyle.parse_args(["--inputDir", "x"])
-    args = dsStyle.parse_args(["--exec", "ls", "--noJobLogging", "--analyzeFileIndex", "f"])
-    assert args.exec == "ls" and args.noJobLogging is True and args.analyzeFileIndex == "f"
+    args = dsStyle.parse_args(["--exec", "ls", "--noJobLogging", "--jobFiles", "--analyzeFileIndex", "f"])
+    assert args.exec == "ls" and args.noJobLogging is True and args.jobFiles is True
+    assert args.analyzeFileIndex == "f"
 
 
 def test_help_namesTheTags(capsys: pytest.CaptureFixture[str]) -> None:

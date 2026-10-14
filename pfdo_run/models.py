@@ -9,7 +9,7 @@ pfdo's and hostlib's models are re-exported here so that a tool built on pfdo_ru
 imports from pfdo_run alone.
 
 Key components:
-    - PfdoRunOptions: ``PfdoOptions`` plus ``exec`` and ``noJobLogging``
+    - PfdoRunOptions: ``PfdoOptions`` plus ``exec``, ``noJobLogging`` and ``jobFiles``
     - FileJob: one file's job: the command built for it and, if it ran, the run's envelope
     - DirNode, StageResult, ProcessResult, RunResult, PfdoOptions, TreeOptions: pfdo's models
     - JobResult, JobSpec, HostFacts: hostlib's models
@@ -39,8 +39,10 @@ class PfdoRunOptions(PfdoOptions):
             Its tags name the current directory's paths and file:
             ``%{inputWorkingDir}``, ``%{outputWorkingDir}``, ``%{inputWorkingFile}``,
             plus every option by name, ``%{outputDir}``.
-        noJobLogging: do not write each job's command, stdout, stderr and return code
-            beside its results.
+        noJobLogging: keep no record of the jobs in the output tree.
+        jobFiles: also write each job as four files beside its results, ``<file>-cmd``,
+            ``-stdout``, ``-stderr``, ``-returncode``, the streams rendered as a terminal
+            would show them. The default record is one line per job in ``jobs.jsonl``.
 
     Example:
         >>> PfdoRunOptions.fromDict({"inputDir": "/in", "exec": "ls %{inputWorkingDir}"}).exec
@@ -49,6 +51,7 @@ class PfdoRunOptions(PfdoOptions):
 
     exec: str = ""
     noJobLogging: bool = False
+    jobFiles: bool = False
 
 
 @dataclass

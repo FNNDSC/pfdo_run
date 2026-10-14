@@ -20,7 +20,7 @@ Dependencies:
 
 from __future__ import annotations
 
-__version__: str = "4.1.0"
+__version__: str = "4.2.0"
 
 from pfdo_run.models import DirNode, FileJob, JobResult, PfdoRunOptions, RunResult, StageResult
 from pfdo_run.pfdo_run import PfdoRun, lookups_forJob, sink_build

@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 import pytest
-from hostlib.sink import LOG_SUFFIXES
+from hostlib.sink import JOBS_FILE, LOG_SUFFIXES
 
 from pfdo_run.models import FileJob, PfdoRunOptions
 from pfdo_run.pfdo_run import PfdoRun, lookups_forJob, sink_build
@@ -52,10 +52,20 @@ def test_copy_everyFile_withLogs(tmp_path: Path) -> None:
     assert (outputDir / "sub-01/anat/a.nii.copy").read_text() == "sub-01/anat/a.nii.gz\n"
     assert (outputDir / "sub-02/anat/my file.nii.copy").read_text() == "spaced\n"
     assert not (outputDir / "notes").exists()
+    lines: list[str] = (outputDir / "sub-01/anat" / JOBS_FILE).read_text().splitlines()
+    records = [json.loads(line) for line in lines]
+    assert [record["returncode"] for record in records] == [0, 0]
+    assert any("a.nii.copy" in record["argv"][-1] for record in records)
+    assert not list((outputDir / "sub-01/anat").glob("*-cmd"))
+
+
+def test_jobFiles_writesFourFilesToo(tmp_path: Path) -> None:
+    inputDir, outputDir = tree_make(tmp_path)
+    PfdoRun(options_make(inputDir, outputDir, COPY, fileFilter="glob:*.nii.gz", jobFiles=True)).run()
     for suffix in LOG_SUFFIXES:
         assert (outputDir / f"sub-01/anat/a.nii.gz-{suffix}").exists()
     assert (outputDir / "sub-01/anat/a.nii.gz-returncode").read_text() == "0\n"
-    assert "a.nii.copy" in (outputDir / "sub-01/anat/a.nii.gz-cmd").read_text()
+    assert (outputDir / "sub-01/anat" / JOBS_FILE).exists()
 
 
 def test_noJobLogging(tmp_path: Path) -> None:
@@ -63,6 +73,7 @@ def test_noJobLogging(tmp_path: Path) -> None:
     PfdoRun(options_make(inputDir, outputDir, COPY, fileFilter="nii", noJobLogging=True)).run()
     assert (outputDir / "sub-01/anat/a.nii.copy").exists()
     assert not list((outputDir / "sub-01/anat").glob("*-stdout"))
+    assert not (outputDir / "sub-01/anat" / JOBS_FILE).exists()
 
 
 def test_analyzeFileIndex_firstOnly(tmp_path: Path) -> None:
@@ -78,7 +89,7 @@ def test_stdout_capturedAndLogged(tmp_path: Path) -> None:
         options_make(inputDir, outputDir, "echo hello %{inputWorkingFile}", dirFilter="notes")
     ).run()
     assert result.status
-    assert (outputDir / "notes/r.txt-stdout").read_text() == "hello r.txt\n"
+    assert json.loads((outputDir / "notes" / JOBS_FILE).read_text())["stdout"] == "hello r.txt\n"
     assert result.process is not None
     jobs = result.process.analyze["notes"].payload["jobs"]
     assert jobs[0]["run"]["stdout"] == "hello r.txt\n" and jobs[0]["run"]["returncode"] == 0
@@ -93,7 +104,7 @@ def test_failingCommand_failsDirectoryRunContinues(tmp_path: Path) -> None:
     assert result.process.analyze["notes"].status is True
     assert result.process.analyze["sub-01/anat"].status is False
     assert result.status  # one directory succeeded, so the stage did
-    assert (outputDir / "sub-01/anat/a.nii.gz-returncode").read_text() == "3\n"
+    assert json.loads((outputDir / "sub-01/anat" / JOBS_FILE).read_text())["returncode"] == 3
     assert set(result.tree) == {"notes"}
 
 
@@ -192,21 +203,25 @@ def test_verbosity2_streamsWhileRunning(tmp_path: Path, capsys: pytest.CaptureFi
 def test_logs_renderedAsTerminalWouldShow(tmp_path: Path) -> None:
     inputDir, outputDir = tree_make(tmp_path)
     exec_: str = "sh -c 'printf \"10%%\\r50%%\\r100%% done\\n\"'"
-    result = PfdoRun(options_make(inputDir, outputDir, exec_, dirFilter="notes")).run()
+    result = PfdoRun(options_make(inputDir, outputDir, exec_, dirFilter="notes", jobFiles=True)).run()
     assert result.status
     assert (outputDir / "notes/r.txt-stdout").read_bytes() == b"100% done\n"
+    assert json.loads((outputDir / "notes" / JOBS_FILE).read_text())["stdout"] == "10%\r50%\r100% done\n"
     job = result.process.analyze["notes"].payload["jobs"][0]  # type: ignore[union-attr]
     assert job["run"]["stdout"] == "10%\r50%\r100% done\n"
 
 
 def test_sink_build_choices(tmp_path: Path) -> None:
-    from hostlib.sink import ConsoleSink, FileSink, NullSink, TeeSink
+    from hostlib.sink import ConsoleSink, JsonSink, NullSink, TeeSink
 
     from pfdo_run.models import DirNode
 
     inputDir, outputDir = tree_make(tmp_path)
     node = DirNode(path=inputDir / "notes", relPath="notes", outputPath=outputDir / "notes", files=["r.txt"])
-    assert isinstance(sink_build(options_make(inputDir, outputDir, "true"), node, "r.txt"), FileSink)
+    assert isinstance(sink_build(options_make(inputDir, outputDir, "true"), node, "r.txt"), JsonSink)
+    assert isinstance(
+        sink_build(options_make(inputDir, outputDir, "true", jobFiles=True), node, "r.txt"), TeeSink
+    )
     assert isinstance(
         sink_build(options_make(inputDir, outputDir, "true", noJobLogging=True), node, "r.txt"), NullSink
     )
