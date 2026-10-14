@@ -1,0 +1,32 @@
+= pfdo_run: architecture
+:toc:
+
+== Abstract
+
+pfdo_run is three small modules over pfdo and pftag: `models` adds the command template and the job record to pfdo's options; `pfdo_run` is a `Pfdo` subclass whose analyze callback builds and runs the command for each selected file; `__main__` composes the command line and manual from pftree's, pfdo's and its own parts. The design has one load-bearing decision, that the template is split before its tags are substituted, and one deliberate omission, that no shell is involved.
+
+== Options and records
+
+`PfdoRunOptions` subclasses `PfdoOptions`, adding `exec` and `noJobLogging`, and inherits `fromDict`, so the whole argparse namespace passes straight through. `JobResult` records one run: the file it was built for, the command as run, the return code, both output streams, a status and the errors that explain a failure. It is a dataclass so that `RunResult.toDict()` expands it into the JSON a caller or pl-shexec reads; the analyze stage's `StageResult.payload["jobs"]` carries one per selected file.
+
+== Building a command
+
+`PfdoRun.__init__` splits the `--exec` template once with `shlex.split`, so the user's quoting is honoured exactly once and a malformed template fails before any directory is touched. For each job, `job_run` builds a `Pftag` with two lookups: `options`, every field of the run's options stringified, which is how `%{outputDir}` works and why `exec` itself is left out; and `pfdo`, the three job tags. It then calls `argv_process` on the split template, which substitutes within each argument and never across argument boundaries. A value with a space stays inside its argument; a value containing a quote is just characters. The tagger runs `strict`, so an unknown tag, or a 1.x-style bare `%name`, fails the job before it runs, with the error in the job's record. The previous engine substituted into the string and then split it on whitespace, which is why a file with a space in its name broke it.
+
+A fresh `Pftag` per job rather than one shared engine is what makes the analyze stage safe to thread: the lookups differ per job and nothing is mutated in common.
+
+== Running it
+
+The command runs through `subprocess.run` without a shell, with both streams captured to completion. The previous engine read stdout line by line and stderr only afterwards, which dropped stdout's last line and could deadlock on a process that filled its stderr pipe. A program that cannot be started is a failed job that never ran, and a non-zero exit is a failed job that did; both carry their reason. `job_log` writes `<file>-cmd`, `<file>-stdout`, `<file>-stderr` and `<file>-returncode` beside the job's results unless `--noJobLogging` is set. In 3.x that option was documented but never defined, so the logs were never written.
+
+== The stages
+
+`inputRead_callback` creates the directory's output path and passes the files on. `inputAnalyze_callback` runs one job per file that `filesToAnalyze` selects, logs each, and returns a `StageResult` whose status is True only when every job succeeded; pftree then drops a failed directory from the tree and continues. `callbacks_run` omits the write stage: the commands have already written their results. pfdo's `processAlways` is set, so `run()` processes without `--test`.
+
+== The command and the manual
+
+`parser_build` composes pftree's `parserIO_build()` and `parserCore_build("pfdo_run", version)`, pfdo's `parserSelf_build()` and pfdo_run's own; `standalone=False` omits the I/O parent for a ChRIS plugin that supplies positional directories. The manual composes pftree's and pfdo's texts with pfdo_run's `--exec` and `--noJobLogging` descriptions and a TAGS section that points at pftag's reference, and `synopsis(command=...)` takes the command's name so pl-shexec prints its own. The page is rendered through `pftree.manual`.
+
+== Verification
+
+The tests run real commands on a fixture tree with nested directories and a file name containing a space: copying every file with logs, `--noJobLogging`, `--analyzeFileIndex f`, captured stdout, a command that fails in some directories and not others, an unresolved tag, a 1.x template, a missing program, options as tags, threads against sequential, the job lookups, an empty template, and JSON readiness. The command is tested through `main`. Continuous integration mirrors pftree's.

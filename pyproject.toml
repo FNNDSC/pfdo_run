@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pfdo_run"
+dynamic = ["version"]
+description = "Run a command, written as a pftag template, in every directory of a tree"
+readme = "README.rst"
+license = { text = "MIT" }
+authors = [{ name = "FNNDSC", email = "dev@babyMRI.org" }]
+requires-python = ">=3.11"
+dependencies = ["pfdo>=6.0.0", "pftag>=3.0.0"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/FNNDSC/pfdo_run"
+
+[project.scripts]
+pfdo_run = "pfdo_run.__main__:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools]
+packages = ["pfdo_run"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pfdo_run.__version__" }
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

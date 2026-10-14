@@ -1,0 +1,20 @@
+= pfdo_run: history
+:toc:
+
+== Abstract
+
+pfdo_run was created in August 2020 as the pfdo family's member that runs a shell command per directory, grew its own `%tag` template language and per-job logging through 2021 and 2022, and was rebuilt in October 2026 as version 4 on pfdo 6 and pftag 3, replacing its template language with pftag's and its string-substitution with per-argument resolution.
+
+== 2020: a command per directory
+
+The first commit, on 24 August 2020, a week after pfdo's, made the base class's demonstration real: instead of touching files, run a command. The command needed to name the directory it was in, so pfdo_run gained the `%` tags that became the family's template idiom: `%inputWorkingDir`, `%outputWorkingDir`, `%inputWorkingFile`, and every command-line option by name. Version 2.0.0 in January 2021 brought the composed command line and manual, and 2.0.2 in February 2021 the per-job logging of stdout, stderr and return code into the output tree, which is the record a batch needs when one of a thousand runs fails.
+
+== 2022: functions and the second grammar
+
+Through 2022, 2.2.x and then 3.x, the template language acquired functions written as a prefix on the tag, `%_rmext_inputWorkingFile`, with `md5`, `strmsk`, `strrepl`, `rmext` and a Faker-generated `name`. In March 2023 the same idea was lifted into pftag as a package with a different grammar, functions after the tag; pfdo_run kept its own, and the two coexisted for three years.
+
+== 2026: version 4
+
+By 2026 pfdo_run carried the family's shared debts, `pfmisc`, `pudb` imported at module level, `Faker` and a process-wide `logging.disable` at import, a version read from installed metadata, no tests and no continuous integration, and several of its own. The command was substituted into as text and then split on whitespace, so a file with a space in its name broke the command or ran a different one. Stdout was read line by line and its last line dropped; stderr was read only after exit, so a chatty tool could deadlock. The `--noJobLogging` option gated the logs but was defined nowhere, so no job log had been written in years. The run's status was always reported False. The tag parser matched names by substring, so `%os` fired inside `%outputWorkingDir`, and `strrepl` ignored its arguments.
+
+Version 4.0.0 rebuilt it on pfdo 6 and pftag 3. The template grammar is pftag's: `%{inputWorkingDir}`, `%{inputWorkingFile|rmext}`; the engine's own parser is gone, and a 1.x-style `%name` fails the job with a message saying what to write. The template is split with `shlex` once and its tags resolved per argument with pftag's `argv_process`, then run without a shell, with both streams captured by `subprocess.run`. Per-job logs are written by default as `<file>-cmd`, `-stdout`, `-stderr` and `-returncode`. A failed template or a non-zero exit fails its directory and the run continues, and the status is truthful. The command line and manual are composed from pftree's and pfdo's parts and exposed again for pl-shexec, which is rebuilt on this version next.
