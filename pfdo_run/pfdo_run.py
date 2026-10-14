@@ -41,6 +41,7 @@ logger: logging.Logger = logging.getLogger("pfdo_run")
 OPTIONS_LOOKUP: str = "options"
 JOB_LOOKUP: str = "pfdo"
 STREAM_VERBOSITY: int = 2
+TAG_OPEN: str = "%{"
 
 
 def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dict[str, dict[str, str]]:
@@ -107,6 +108,15 @@ class PfdoRun(Pfdo):
         super().__init__(options)
         self.options: PfdoRunOptions = options
         self.argvTemplate: list[str] = shlex.split(options.exec) if options.exec else []
+        self.template_check()
+
+    def template_check(self) -> None:
+        """Warn when the template carries no tag, since the same command would then run for every file."""
+        if self.options.exec and TAG_OPEN not in self.options.exec:
+            logger.warning(
+                "--exec has no %{...} tag; the same command runs for every file. "
+                "Name the file with %{inputWorkingFile}, see pfdo_run --man TAGS"
+            )
 
     def inputRead_callback(self, node: DirNode) -> StageResult:
         """Create the directory's output path and pass its files on.

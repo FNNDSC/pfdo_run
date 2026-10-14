@@ -92,3 +92,10 @@ def test_parser_build_dsOmitsIoArguments() -> None:
         dsStyle.parse_args(["--inputDir", "x"])
     args = dsStyle.parse_args(["--exec", "ls", "--noJobLogging", "--analyzeFileIndex", "f"])
     assert args.exec == "ls" and args.noJobLogging is True and args.analyzeFileIndex == "f"
+
+
+def test_help_namesTheTags(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        parser_build().parse_args(["--help"])
+    helpText: str = capsys.readouterr().out
+    assert "%{inputWorkingFile}" in helpText and "--man TAGS" in helpText
