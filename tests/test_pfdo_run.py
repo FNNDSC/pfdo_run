@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
+import pytest
 from hostlib.sink import LOG_SUFFIXES
 
 from pfdo_run.models import FileJob, PfdoRunOptions
@@ -176,7 +178,7 @@ def test_jobResult_isJsonReady(tmp_path: Path) -> None:
     assert FileJob("f", ["true"], True).run is None
 
 
-def test_verbosity2_streamsWhileRunning(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+def test_verbosity2_streamsWhileRunning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     inputDir, outputDir = tree_make(tmp_path)
     exec_: str = "sh -c 'echo live %{inputWorkingFile}; echo warn >&2'"
     quiet = PfdoRun(options_make(inputDir, outputDir, exec_, dirFilter="notes", verbosity=1)).run()
@@ -225,3 +227,14 @@ def test_models_reexport() -> None:
 
     assert models.DirNode is pfdo.models.DirNode and models.StageResult is pfdo.models.StageResult
     assert models.JobResult is hostlib.models.JobResult and models.JobSpec is hostlib.models.JobSpec
+
+
+def test_untaggedExec_warns(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    inputDir, outputDir = tree_make(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="pfdo_run"):
+        PfdoRun(options_make(inputDir, outputDir, "true"))
+    assert "no %{...} tag" in caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="pfdo_run"):
+        PfdoRun(options_make(inputDir, outputDir, "cat %{inputWorkingFile}"))
+    assert caplog.text == ""

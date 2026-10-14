@@ -254,7 +254,14 @@ def parserSelf_build() -> argparse.ArgumentParser:
     """
     parser: argparse.ArgumentParser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
-        "--exec", dest="exec", default="", help="the command template to run per file (required)"
+        "--exec",
+        dest="exec",
+        default="",
+        help=(
+            "the command to run per file, a pftag template (required): "
+            "%%{inputWorkingDir}, %%{inputWorkingFile}, %%{outputWorkingDir}; "
+            "functions pipe, as %%{inputWorkingFile|rmext}; every tag under --man TAGS"
+        ),
     )
     parser.add_argument(
         "--noJobLogging",
@@ -284,7 +291,10 @@ def parser_build(standalone: bool = True) -> argparse.ArgumentParser:
         parents.insert(0, parserIO_build())
     return argparse.ArgumentParser(
         prog="pfdo_run",
-        description="Run a command in every directory of a tree. Full manual: pfdo_run --man",
+        description=(
+            "Run a command template in every directory of a tree; "
+            "%{...} tags name the file and directories in hand. Full manual: pfdo_run --man"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=parents,
     )
