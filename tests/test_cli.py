@@ -99,3 +99,13 @@ def test_help_namesTheTags(capsys: pytest.CaptureFixture[str]) -> None:
         parser_build().parse_args(["--help"])
     helpText: str = capsys.readouterr().out
     assert "%{inputWorkingFile}" in helpText and "--man TAGS" in helpText
+
+
+def test_parser_build_forAnotherCommand(capsys: pytest.CaptureFixture[str]) -> None:
+    plugin = parser_build(standalone=False, command="shexec", version="9.9.9")
+    with pytest.raises(SystemExit):
+        plugin.parse_args(["--version"])
+    assert capsys.readouterr().out.strip() == "shexec 9.9.9"
+    with pytest.raises(SystemExit):
+        plugin.parse_args(["--help"])
+    assert "shexec --man" in capsys.readouterr().out
