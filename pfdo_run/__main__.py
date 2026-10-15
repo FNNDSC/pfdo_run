@@ -40,7 +40,7 @@ from pftree.__main__ import (
     parserCore_build,
     parserIO_build,
 )
-from pftree.manual import Manual, manual_print
+from pftree.manual import Manual, manual_attach
 
 from pfdo_run import __version__
 from pfdo_run.models import PfdoRunOptions, RunResult
@@ -297,7 +297,9 @@ def parser_build(
         version: the version ``--version`` prints, with ``command``.
 
     Returns:
-        The parser.
+        The parser; ``--man`` and ``--synopsis`` print pfdo_run's manual and exit as
+        they are read, and a package built on pfdo_run attaches its own with
+        ``pftree.manual.manual_attach``.
     """
     parents: list[argparse.ArgumentParser] = [
         parserCore_build(command, version),
@@ -306,7 +308,7 @@ def parser_build(
     ]
     if standalone:
         parents.insert(0, parserIO_build())
-    return argparse.ArgumentParser(
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog=command,
         description=(
             "Run a command template in every directory of a tree; "
@@ -315,6 +317,8 @@ def parser_build(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=parents,
     )
+    manual_attach(parser, manual_build())
+    return parser
 
 
 def options_fromArgs(args: argparse.Namespace) -> PfdoRunOptions:
@@ -342,9 +346,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser: argparse.ArgumentParser = parser_build()
     args: argparse.Namespace = parser.parse_args(argv)
-    if args.man or args.synopsis:
-        manual_print(manual_build(), shortOnly=not args.man)
-        return 0
     if not args.inputDir:
         parser.error("--inputDir is required")
     if not args.exec:

@@ -65,7 +65,9 @@ def test_main_versionAndManual(capsys: pytest.CaptureFixture[str]) -> None:
         main(["--version"])
     assert exc.value.code == 0
     assert f"pfdo_run {__version__}" in capsys.readouterr().out
-    assert main(["--man"]) == 0
+    with pytest.raises(SystemExit) as exc:
+        main(["--man"])
+    assert exc.value.code == 0
     out: str = capsys.readouterr().out
     assert "Path-File Do Run" in out
     for text in (
@@ -110,3 +112,15 @@ def test_parser_build_forAnotherCommand(capsys: pytest.CaptureFixture[str]) -> N
     with pytest.raises(SystemExit):
         plugin.parse_args(["--help"])
     assert "shexec --man" in capsys.readouterr().out
+
+
+def test_parser_dsStyleManNeedsNoDirectories(capsys: pytest.CaptureFixture[str]) -> None:
+    parser = parser_build(standalone=False, command="pl-x")
+    parser.add_argument("inputdir")
+    parser.add_argument("outputdir")
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(["--synopsis"])
+    assert exc.value.code == 0
+    out: str = capsys.readouterr().out
+    assert "Path-File Do Run" in out
+    assert "DESCRIPTION" not in out
