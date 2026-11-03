@@ -131,10 +131,11 @@ TAG_HELP: str = """
             %{inputWorkingDir}    the input directory being processed
             %{outputWorkingDir}   its counterpart in the output tree
             %{inputWorkingFile}   the file being processed
-            %{volumeName}         the volume the file stands for: a .dcm
-                                  file's directory name, any other file's
-                                  name less its extension (t1.nii.gz is
-                                  t1, meeting.mp4 is meeting)
+            %{volumeName}         the volume the file stands for: the
+                                  directory's name for a volume alone in
+                                  it or a .dcm series; for a file beside
+                                  other volumes, its name less its
+                                  extension (scan01.nii.gz is scan01)
 
         and every option of pfdo_run is a tag by name, so %{outputDir} is
         the output tree's root. The core tags %{timestamp}, %{date},
@@ -154,9 +155,10 @@ TAG_HELP: str = """
         the job's record says why.
 
         With --analyzeFileIndex v, one job per volume, %{volumeName} names
-        each job's results: a folder of three scans gives three, named
-        after the scans, and a series beside them a fourth, named after
-        the directory.
+        each job's results: a directory holding one scan gives the
+        directory's name, as before; a folder of three scans gives three,
+        named after the scans, and a series beside them a fourth, named
+        after the directory.
 """
 
 EXAMPLES: str = """

@@ -64,7 +64,7 @@ def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dic
         "inputWorkingDir": str(node.path),
         "outputWorkingDir": str(node.outputPath),
         "inputWorkingFile": fileName,
-        "volumeName": volume_name(node.path.name, fileName),
+        "volumeName": volume_name(node.path.name, fileName, node.files),
     }
     return {OPTIONS_LOOKUP: optionTags, JOB_LOOKUP: jobTags}
 

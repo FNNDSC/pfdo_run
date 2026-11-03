@@ -169,7 +169,7 @@ def test_lookups_forJob(tmp_path: Path) -> None:
         "inputWorkingDir": str(node.path),
         "outputWorkingDir": str(outputDir / "notes"),
         "inputWorkingFile": "r.txt",
-        "volumeName": "r",
+        "volumeName": "notes",
     }
     assert lookups["options"]["outputDir"] == str(outputDir)
     assert "exec" not in lookups["options"]
@@ -180,6 +180,7 @@ def test_volumeName_onePerVolume(tmp_path: Path) -> None:
     outputDir: Path = tmp_path / "out"
     fixture: dict[str, list[str]] = {
         "sub-01": ["scan01.nii.gz", "scan02.nii.gz", "scan01.json"],
+        "sub-02": ["t1.nii.gz", "t1.json"],
         "T1": ["im1.dcm", "im2.dcm"],
     }
     for rel, names in fixture.items():
@@ -198,7 +199,7 @@ def test_volumeName_onePerVolume(tmp_path: Path) -> None:
     ).run()
     assert result.status
     made: set[str] = {str(p.relative_to(outputDir)) for p in outputDir.rglob("*.out")}
-    assert made == {"sub-01/scan01.out", "sub-01/scan02.out", "T1/T1.out"}
+    assert made == {"sub-01/scan01.out", "sub-01/scan02.out", "sub-02/sub-02.out", "T1/T1.out"}
 
 
 def test_emptyExec_failsJobs(tmp_path: Path) -> None:

@@ -46,7 +46,7 @@ Command line
 All of ``pftree``'s and ``pfdo``'s options apply. ``pfdo_run`` adds:
 
 ``--exec <commandTemplate>``
-    The command to run per selected file. Tags: ``%{inputWorkingDir}``, ``%{outputWorkingDir}``, ``%{inputWorkingFile}``, ``%{volumeName}`` (a ``.dcm`` file's directory name, any other file's name less its extension: ``t1.nii.gz`` is ``t1``), every option by name (``%{outputDir}``), and pftag's core tags. Functions: ``rmext``, ``ext``, ``basename``, ``dirname``, ``replace``, ``re``, ``upper``, ``lower``, ``strip``, ``pad``, ``slice``, ``md5``, ``sha256``, ``strftime``, ``mask``. A tag that does not resolve fails that job before it runs.
+    The command to run per selected file. Tags: ``%{inputWorkingDir}``, ``%{outputWorkingDir}``, ``%{inputWorkingFile}``, ``%{volumeName}`` (the directory's name for a volume alone in it or a ``.dcm`` series; for a file beside other volumes, its name less its extension: ``scan01.nii.gz`` is ``scan01``), every option by name (``%{outputDir}``), and pftag's core tags. Functions: ``rmext``, ``ext``, ``basename``, ``dirname``, ``replace``, ``re``, ``upper``, ``lower``, ``strip``, ``pad``, ``slice``, ``md5``, ``sha256``, ``strftime``, ``mask``. A tag that does not resolve fails that job before it runs.
 
 ``--noJobLogging``
     Keep no record of the jobs. By default each job appends one line of JSON to ``jobs.jsonl`` in its output directory: the command, both streams complete, the return code, the host, the start, end and duration. ``pflog read out/**/jobs.jsonl`` prints them as a table.
