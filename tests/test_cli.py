@@ -72,7 +72,7 @@ def test_main_versionAndManual(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Path-File Do Run" in out
     for text in (
         "--exec <commandTemplate>",
-        "[--analyzeFileIndex <a|f|l|m|N>]",
+        "[--analyzeFileIndex <a|f|l|m|v|N>]",
         "[--fileFilter <token1,token2,...>]",
         "TAGS",
     ):

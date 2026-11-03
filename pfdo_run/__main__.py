@@ -125,12 +125,17 @@ TAG_HELP: str = """
 
         The --exec template is resolved by pftag (see pftag --man or the
         pftag docs/tags.adoc). A tag is %{name}, optionally piped through
-        functions: %{name|function|function(arg, arg)}. Three tags describe
+        functions: %{name|function|function(arg, arg)}. Four tags describe
         the job:
 
             %{inputWorkingDir}    the input directory being processed
             %{outputWorkingDir}   its counterpart in the output tree
             %{inputWorkingFile}   the file being processed
+            %{volumeName}         the volume the file stands for: the
+                                  directory's name for a volume alone in
+                                  it or a .dcm series; for a file beside
+                                  other volumes, its name less its
+                                  extension (scan01.nii.gz is scan01)
 
         and every option of pfdo_run is a tag by name, so %{outputDir} is
         the output tree's root. The core tags %{timestamp}, %{date},
@@ -148,6 +153,12 @@ TAG_HELP: str = """
         Nothing outside %{...} is a tag, so a literal % in the command is
         fine. A tag that does not resolve fails that job before it runs;
         the job's record says why.
+
+        With --analyzeFileIndex v, one job per volume, %{volumeName} names
+        each job's results: a directory holding one scan gives the
+        directory's name, as before; a folder of three scans gives three,
+        named after the scans, and a series beside them a fourth, named
+        after the directory.
 """
 
 EXAMPLES: str = """
