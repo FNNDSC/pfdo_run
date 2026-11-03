@@ -30,7 +30,7 @@ import shlex
 
 from hostlib.proc.run import job_run as host_jobRun
 from hostlib.sink import JOBS_FILE, ConsoleSink, FileSink, JobSink, JsonSink, NullSink, TeeSink
-from pfdo.pfdo import Pfdo
+from pfdo.pfdo import Pfdo, volume_name
 from pftag.models import ArgvResult, TagOptions
 from pftag.pftag import Pftag
 
@@ -55,7 +55,7 @@ def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dic
 
     Returns:
         ``options`` and ``pfdo`` (``inputWorkingDir``, ``outputWorkingDir``,
-        ``inputWorkingFile``), the latter also reachable qualified.
+        ``inputWorkingFile``, ``volumeName``), the latter also reachable qualified.
     """
     optionTags: dict[str, str] = {
         name: str(value) for name, value in dataclasses.asdict(options).items() if name not in ("exec",)
@@ -64,6 +64,7 @@ def lookups_forJob(options: PfdoRunOptions, node: DirNode, fileName: str) -> dic
         "inputWorkingDir": str(node.path),
         "outputWorkingDir": str(node.outputPath),
         "inputWorkingFile": fileName,
+        "volumeName": volume_name(node.path.name, fileName),
     }
     return {OPTIONS_LOOKUP: optionTags, JOB_LOOKUP: jobTags}
 
